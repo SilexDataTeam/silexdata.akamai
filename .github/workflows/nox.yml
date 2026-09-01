@@ -25,9 +25,24 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  detect:
+    name: Detect collection minimum ansible-core requirement
+    runs-on: ubuntu-latest
+    outputs:
+      requires_ansible: ${{ steps.ansible.outputs.requires_ansible }}
+    steps:
+      - name: Check out collection
+        uses: actions/checkout@v7
+
+      - name: Read minimum ansible-core requirement from meta/runtime.yml
+        id: ansible
+        run: |
+          requires_ansible=$(grep -m1 '^requires_ansible:' meta/runtime.yml | sed -E "s/^requires_ansible:[^0-9]*([0-9]+\.[0-9]+).*/\1/")
+          echo "requires_ansible=${requires_ansible}" >> "$GITHUB_OUTPUT"
   nox:
+    needs: detect
     uses: ansible-community/antsibull-nox/.github/workflows/reusable-nox-matrix.yml@stable-1
     with:
       # Match the collection's minimum ansible-core requirement from
       # meta/runtime.yml (requires_ansible: '>=2.14.0').
-      min-ansible-core: "2.14"
+      min-ansible-core: ${{ needs.detect.outputs.requires_ansible }}

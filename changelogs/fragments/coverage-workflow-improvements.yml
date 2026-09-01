@@ -1,0 +1,8 @@
+---
+trivial:
+  - Merge ``integration.yml`` into ``coverage.yml`` so tests run once, across the full ansible-core/Python matrix, instead of a single ansible-core version.
+  - Add an ``ansible-test --version`` display step and HTML coverage report generation to the coverage CI workflow.
+  - Add an aggregation job that combines coverage data from every matrix leg, so the HTML preview and PR comment reflect the whole matrix rather than one leg.
+  - Publish the aggregated HTML coverage report to GitHub Pages on merges to ``main``, and post a summary as a sticky pull request comment.
+  - Detect the collection namespace/name from ``galaxy.yml`` and the minimum ansible-core version from ``meta/runtime.yml`` instead of hard-coding them.
+  - Add CI status badges for the lint, nox, and coverage workflows to ``README.md``.
