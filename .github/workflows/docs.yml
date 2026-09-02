@@ -3,7 +3,7 @@ name: Docs
 
 # Builds the antsibull-docs Sphinx docsite for the collection and deploys it
 # to GitHub Pages, alongside the HTML coverage report built by coverage.yml
-# (fetched via the download-latest-artifact composite action, since
+# (fetched via the wait-for-workflow-artifact composite action, since
 # deploy-pages accepts only one artifact per deployment). Runs on every
 # push/PR to catch docs build breakage early; the HTML artifact itself is
 # only kept, and Pages only deployed, on pushes to main.
@@ -110,10 +110,13 @@ jobs:
       # Assemble a single site: this workflow's own docsite at the root, and
       # the coverage report (built by the separate Coverage workflow) nested
       # under /coverage/, since deploy-pages publishes exactly one artifact
-      # per deployment. The coverage report is fetched from Coverage's
-      # latest successful run on main rather than built here - that run may
-      # finish slightly before or after this one for the same push, and
-      # self-corrects on the next push either way.
+      # per deployment. Coverage.yml triggers on the same push, so its run
+      # for this commit may still be in progress (or not yet started) when
+      # this step runs; wait-for-workflow-artifact polls until that exact
+      # commit's run completes rather than grabbing whatever the latest
+      # successful run on the branch happens to be, so the deployed report
+      # always matches this commit and this job fails loudly instead of
+      # racing ahead of a coverage run that hasn't produced its artifact yet.
       - name: Check out repository
         uses: actions/checkout@v7
 
@@ -123,10 +126,11 @@ jobs:
           name: docs-html
           path: site
 
-      - name: Download coverage report
-        uses: ./.github/actions/download-latest-artifact
+      - name: Wait for coverage report
+        uses: ./.github/actions/wait-for-workflow-artifact
         with:
           workflow: coverage.yml
+          head-sha: ${{ github.sha }}
           artifact-name: coverage-html
           path: site/coverage
           github-token: ${{ secrets.GITHUB_TOKEN }}

@@ -2,8 +2,8 @@
 trivial:
   - Add a ``docs.yml`` workflow that builds the collection's ``antsibull-docs`` documentation site and deploys it to GitHub Pages.
   - Move the existing HTML coverage report to the ``/coverage/`` subpath of GitHub Pages, published by ``docs.yml``'s deploy job alongside the docsite.
-  - Add a ``download-latest-artifact`` composite action that fetches a named artifact from another workflow's latest successful run on a branch.
-  - Use ``download-latest-artifact`` to pull the coverage report built by ``coverage.yml`` into the ``docs.yml`` deployment.
+  - Add a ``wait-for-workflow-artifact`` composite action that waits for another workflow's run for a given commit, then downloads a named artifact from it.
+  - Use ``wait-for-workflow-artifact`` to pull ``coverage.yml``'s report for that commit into the ``docs.yml`` deployment, not a stale one.
   - Update ``README.md`` with a documentation section and badges linking to the published docs site and coverage report.
   - Generate a shields.io endpoint badge (``coverage-badge.json``) from the aggregated ``coverage.xml``, published alongside the coverage report.
   - Have the "Coverage Report" badge in ``README.md`` show the live coverage percentage instead of a static label.

@@ -170,7 +170,7 @@ jobs:
       # deploy-pages has no per-PR preview support (it's alpha-only, not
       # generally available). PRs get the summary comment below instead.
       # The report is uploaded as a plain artifact here; the Docs workflow's
-      # deploy job fetches it (via the download-latest-artifact composite
+      # deploy job fetches it (via the wait-for-workflow-artifact composite
       # action) and combines it with the docsite into a single Pages
       # deployment, with the coverage report nested under /coverage/.
       - name: Upload HTML coverage report artifact
