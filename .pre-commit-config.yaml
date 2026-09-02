@@ -70,6 +70,16 @@ repos:
       - id: antsibull-changelog-lint
       - id: antsibull-changelog-lint-changelog-yaml
 
+  # GitHub Actions workflow syntax + expression validation - catches things
+  # like referencing a context (e.g. needs) where it isn't available, or an
+  # action input that doesn't exist, before a run wastes CI time discovering
+  # it (or, for a startup-time syntax error, before the run doesn't happen
+  # at all).
+  - repo: https://github.com/rhysd/actionlint
+    rev: v1.7.12
+    hooks:
+      - id: actionlint
+
   # Collection documentation linting: validates plugin DOCUMENTATION/EXAMPLES/
   # RETURN schemas and extra docsite RST refs without doing a full Sphinx
   # build. Mirrors the command the docs-check nox session runs (see

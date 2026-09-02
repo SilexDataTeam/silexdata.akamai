@@ -12,3 +12,4 @@ trivial:
   - Add a ``docs/docsite/links.yml`` with a Coverage Report entry, so the docsite's homepage links to the coverage report too, using a relative URL.
   - Add a ``docs/docsite/rst/coverage-report.rst`` page, regenerated in CI into a native summary table linking to the full report.
   - Upload ``coverage.yml``'s HTML report on every run, not just ``main`` pushes, so every ``docs.yml`` build gets a per-commit summary.
+  - Fix ``wait-for-workflow-artifact`` hanging on pull requests, since ``github.sha`` there is a merge commit, not the PR's real head commit.

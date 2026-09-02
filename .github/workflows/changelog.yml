@@ -1,9 +1,11 @@
 ---
 name: Changelog
 
-# Validate that every pull request into main adds a changelog fragment.
-# Fragment syntax itself is linted by the Lint workflow (pre-commit runs the
-# antsibull-changelog hooks).
+# Validate that every pull request into main adds or updates a changelog
+# fragment. Modifying an existing fragment counts - a PR that extends earlier
+# work doesn't need a brand new file, just changelog-worthy content somewhere
+# under changelogs/fragments/. Fragment syntax itself is linted by the Lint
+# workflow (pre-commit runs the antsibull-changelog hooks).
 on:
   pull_request:
     branches:
@@ -26,16 +28,16 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Ensure a changelog fragment was added
+      - name: Ensure a changelog fragment was added or updated
         env:
           BASE: ${{ github.base_ref }}
         run: |
           git fetch --quiet origin "$BASE"
-          added=$(git diff --name-only --diff-filter=A "origin/${BASE}...HEAD" \
+          changed=$(git diff --name-only --diff-filter=AM "origin/${BASE}...HEAD" \
             -- 'changelogs/fragments/' | grep -vE '/\.gitkeep$' || true)
-          if [ -z "$added" ]; then
-            echo "::error::No changelog fragment added under changelogs/fragments/ - add one describing your change."
+          if [ -z "$changed" ]; then
+            echo "::error::No changelog fragment added or updated under changelogs/fragments/ - add or extend one describing your change."
             exit 1
           fi
-          echo "Found new changelog fragment(s):"
-          echo "$added"
+          echo "Found added/updated changelog fragment(s):"
+          echo "$changed"

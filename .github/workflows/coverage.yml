@@ -128,13 +128,17 @@ jobs:
       - name: Install ansible-core
         run: python -m pip install "ansible-core~=2.21.0"
 
+      # Pattern-based downloads never fail on zero matches (unlike a
+      # name-based download): if every matrix leg failed before uploading,
+      # this step still succeeds with nothing downloaded, and the coverage
+      # generation steps below run against empty data rather than blocking
+      # this always-run job.
       - name: Download coverage data from all matrix legs
         uses: actions/download-artifact@v8
         with:
           pattern: coverage-data-*
           path: ansible_collections/${{ needs.detect.outputs.namespace }}/${{ needs.detect.outputs.name }}/tests/output/coverage
           merge-multiple: true
-          if-no-artifact-found: warn
 
       - name: Generate aggregated coverage report
         working-directory: ansible_collections/${{ needs.detect.outputs.namespace }}/${{ needs.detect.outputs.name }}

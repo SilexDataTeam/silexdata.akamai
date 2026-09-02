@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Generate docs/docsite/rst/coverage-report.rst from a coverage.py HTML report's index page.
 
 Parses the file table's rows (name, href, statements, missing, coverage %) directly out of

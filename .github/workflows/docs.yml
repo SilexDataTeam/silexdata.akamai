@@ -64,6 +64,15 @@ jobs:
       # installed.
       ANSIBLE_COLLECTIONS_PATH: ${{ github.workspace }}
     steps:
+      # uses: does not support expressions built from job contexts like
+      # needs (actionlint and GitHub Actions itself both reject it - no
+      # context is available there), so this local composite action can't be
+      # referenced through the dynamic namespace/name path used elsewhere in
+      # this job. A plain root checkout gives it a static path instead,
+      # mirroring how the deploy job below already does this.
+      - name: Check out repository
+        uses: actions/checkout@v7
+
       - name: Check out collection
         uses: actions/checkout@v7
         with:
@@ -79,14 +88,17 @@ jobs:
 
       # coverage.yml runs on the same push/PR triggers as this workflow, so
       # its run for this commit may still be in progress; wait-for-workflow-
-      # artifact polls until that exact commit's run completes. Referenced
-      # from inside the nested checkout below, since this job (unlike
-      # deploy) never checks the repository out at the workspace root.
+      # artifact polls until that exact commit's run completes. github.sha
+      # is wrong here for pull_request events - it's the synthetic merge
+      # commit on refs/pull/N/merge, which never matches a workflow run's
+      # real head_sha, so this would poll until timeout. Use the PR's actual
+      # head commit for pull_request events, falling back to github.sha for
+      # push/workflow_dispatch, where it's already correct.
       - name: Wait for coverage report
-        uses: ./ansible_collections/${{ needs.detect.outputs.namespace }}/${{ needs.detect.outputs.name }}/.github/actions/wait-for-workflow-artifact
+        uses: ./.github/actions/wait-for-workflow-artifact
         with:
           workflow: coverage.yml
-          head-sha: ${{ github.sha }}
+          head-sha: ${{ github.event.pull_request.head.sha || github.sha }}
           artifact-name: coverage-html
           path: coverage-html
           github-token: ${{ secrets.GITHUB_TOKEN }}
@@ -153,11 +165,15 @@ jobs:
           name: docs-html
           path: site
 
+      # This job only ever runs for push events (see the job-level if:
+      # above), where github.sha is already the real commit - the fallback
+      # expression is only load-bearing in the docs job's identical step,
+      # kept here too so both stay in sync.
       - name: Wait for coverage report
         uses: ./.github/actions/wait-for-workflow-artifact
         with:
           workflow: coverage.yml
-          head-sha: ${{ github.sha }}
+          head-sha: ${{ github.event.pull_request.head.sha || github.sha }}
           artifact-name: coverage-html
           path: site/coverage
           github-token: ${{ secrets.GITHUB_TOKEN }}
