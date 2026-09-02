@@ -143,18 +143,44 @@ jobs:
           ansible-test coverage xml --requirements
           ansible-test coverage html --requirements
 
+      # Written into the HTML report directory so it gets published to Pages
+      # alongside it (at /coverage/coverage-badge.json), and read by the
+      # "Coverage Report" shields.io endpoint badge in README.md. Thresholds
+      # match the CodeCoverageSummary step below.
+      - name: Generate coverage badge data
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        working-directory: ansible_collections/${{ needs.detect.outputs.namespace }}/${{ needs.detect.outputs.name }}
+        run: |
+          python3 <<'PY'
+          import json
+          import xml.etree.ElementTree as ET
+
+          line_rate = float(ET.parse("tests/output/reports/coverage.xml").getroot().attrib["line-rate"])
+          pct = round(line_rate * 100, 1)
+          color = "red" if pct < 60 else "yellow" if pct < 80 else "brightgreen"
+
+          with open("tests/output/reports/coverage/coverage-badge.json", "w") as f:
+              json.dump(
+                  {"schemaVersion": 1, "label": "coverage", "message": f"{pct}%", "color": color},
+                  f,
+              )
+          PY
+
       # Coverage is only published to GitHub Pages from main, since
       # deploy-pages has no per-PR preview support (it's alpha-only, not
       # generally available). PRs get the summary comment below instead.
-      - name: Configure GitHub Pages
+      # The report is uploaded as a plain artifact here; the Docs workflow's
+      # deploy job fetches it (via the download-latest-artifact composite
+      # action) and combines it with the docsite into a single Pages
+      # deployment, with the coverage report nested under /coverage/.
+      - name: Upload HTML coverage report artifact
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-        uses: actions/configure-pages@v6
-
-      - name: Upload HTML coverage report for GitHub Pages
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-        uses: actions/upload-pages-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
+          name: coverage-html
           path: ansible_collections/${{ needs.detect.outputs.namespace }}/${{ needs.detect.outputs.name }}/tests/output/reports/coverage
+          if-no-files-found: error
+          retention-days: 1
 
       - name: Parse Coverage Summary
         id: coverage_summary
@@ -178,23 +204,7 @@ jobs:
             ### 📊 Ansible Test Coverage Report
             {{{content}}}
 
-            🔗 **[View the interactive, line-by-line coverage report](https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/)**
+            🔗 **[View the interactive coverage report](https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/coverage/)**
             (reflects the latest merge to `main`, not this branch)
           path: code-coverage-results.md
           recreate: true
-
-  deploy:
-    needs: aggregate
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    name: Deploy coverage report to GitHub Pages
-    runs-on: ubuntu-latest
-    permissions:
-      pages: write
-      id-token: write
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v5
