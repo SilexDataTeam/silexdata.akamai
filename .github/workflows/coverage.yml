@@ -6,43 +6,91 @@ on:
     branches:
       - main
   pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
   workflow_dispatch:
 
 permissions:
   contents: read
+  pull-requests: write
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  coverage:
-    name: Coverage (ansible-core 2.21)
+  detect:
+    name: Detect collection namespace/name
     runs-on: ubuntu-latest
+    outputs:
+      namespace: ${{ steps.galaxy.outputs.namespace }}
+      name: ${{ steps.galaxy.outputs.name }}
+    steps:
+      - name: Check out collection
+        uses: actions/checkout@v7
+
+      - name: Read namespace/name from galaxy.yml
+        id: galaxy
+        run: |
+          namespace=$(grep -m1 '^namespace:' galaxy.yml | awk '{print $2}')
+          name=$(grep -m1 '^name:' galaxy.yml | awk '{print $2}')
+          echo "namespace=${namespace}" >> "$GITHUB_OUTPUT"
+          echo "name=${name}" >> "$GITHUB_OUTPUT"
+
+  coverage:
+    needs: detect
+    name: Coverage ${{ matrix.ansible }} (py${{ matrix.python }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - ansible: "2.14"
+            python: "3.11"
+          - ansible: "2.15"
+            python: "3.11"
+          - ansible: "2.16"
+            python: "3.11"
+          - ansible: "2.17"
+            python: "3.11"
+          - ansible: "2.18"
+            python: "3.11"
+          - ansible: "2.19"
+            python: "3.11"
+          - ansible: "2.20"
+            python: "3.12"
+          - ansible: "2.21"
+            python: "3.12"
     steps:
       - name: Check out collection
         uses: actions/checkout@v7
         with:
-          path: ansible_collections/silexdata/akamai
+          path: ansible_collections/${{ needs.detect.outputs.namespace }}/${{ needs.detect.outputs.name }}
 
-      - name: Set up Python 3.14
+      - name: Set up Python ${{ matrix.python }}
         uses: actions/setup-python@v6
         with:
-          python-version: "3.14"
+          python-version: ${{ matrix.python }}
 
-      - name: Install ansible-core 2.21
-        run: python -m pip install "ansible-core~=2.21.0"
+      - name: Install ansible-core ${{ matrix.ansible }}
+        run: python -m pip install "ansible-core~=${{ matrix.ansible }}.0"
+
+      - name: Display Ansible Test Version
+        working-directory: ansible_collections/${{ needs.detect.outputs.namespace }}/${{ needs.detect.outputs.name }}
+        run: ansible-test --version
 
       - name: Run unit tests with coverage
-        working-directory: ansible_collections/silexdata/akamai
+        working-directory: ansible_collections/${{ needs.detect.outputs.namespace }}/${{ needs.detect.outputs.name }}
         run: ansible-test units --coverage --docker -v --requirements
 
       # Run without --color so the teed log greps cleanly.
       - name: Run integration tests with coverage
-        working-directory: ansible_collections/silexdata/akamai
+        working-directory: ansible_collections/${{ needs.detect.outputs.namespace }}/${{ needs.detect.outputs.name }}
         run: |
           set -o pipefail
-          ansible-test integration manage_akamai --coverage --docker -v --requirements \
+          ansible-test integration manage_${{ needs.detect.outputs.name }} --coverage --docker -v --requirements \
             2>&1 | tee "${RUNNER_TEMP}/integration.log"
 
       - name: Surface service-availability warning
@@ -50,18 +98,103 @@ jobs:
         run: |
           log="${RUNNER_TEMP}/integration.log"
           if [ -f "$log" ] && grep -aq 'SETUP_SERVICE_UNAVAILABLE' "$log"; then
-            echo "::warning title=Akamai service unavailable::Live integration tests skipped (service unreachable)."
+            echo "::warning title=Service unavailable::Live integration tests skipped (service unreachable)."
           fi
 
-      - name: Generate coverage report
-        working-directory: ansible_collections/silexdata/akamai
+      - name: Upload coverage data
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-data-ansible${{ matrix.ansible }}-py${{ matrix.python }}
+          path: ansible_collections/${{ needs.detect.outputs.namespace }}/${{ needs.detect.outputs.name }}/tests/output/coverage/
+          if-no-files-found: error
+          retention-days: 1
+
+  aggregate:
+    needs: [detect, coverage]
+    if: always()
+    name: Aggregate coverage and generate finalized report
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out collection
+        uses: actions/checkout@v7
+        with:
+          path: ansible_collections/${{ needs.detect.outputs.namespace }}/${{ needs.detect.outputs.name }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install ansible-core
+        run: python -m pip install "ansible-core~=2.21.0"
+
+      - name: Download coverage data from all matrix legs
+        uses: actions/download-artifact@v8
+        with:
+          pattern: coverage-data-*
+          path: ansible_collections/${{ needs.detect.outputs.namespace }}/${{ needs.detect.outputs.name }}/tests/output/coverage
+          merge-multiple: true
+          if-no-artifact-found: warn
+
+      - name: Generate aggregated coverage report
+        working-directory: ansible_collections/${{ needs.detect.outputs.namespace }}/${{ needs.detect.outputs.name }}
         run: |
           ansible-test coverage report --requirements
           ansible-test coverage xml --requirements
+          ansible-test coverage html --requirements
 
-      - name: Upload coverage report
-        uses: actions/upload-artifact@v7
+      # Coverage is only published to GitHub Pages from main, since
+      # deploy-pages has no per-PR preview support (it's alpha-only, not
+      # generally available). PRs get the summary comment below instead.
+      - name: Configure GitHub Pages
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        uses: actions/configure-pages@v6
+
+      - name: Upload HTML coverage report for GitHub Pages
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        uses: actions/upload-pages-artifact@v5
         with:
-          name: coverage-report
-          path: ansible_collections/silexdata/akamai/tests/output/reports/
-          if-no-files-found: warn
+          path: ansible_collections/${{ needs.detect.outputs.namespace }}/${{ needs.detect.outputs.name }}/tests/output/reports/coverage
+
+      - name: Parse Coverage Summary
+        id: coverage_summary
+        uses: irongut/CodeCoverageSummary@v1.3.0
+        with:
+          filename: ansible_collections/${{ needs.detect.outputs.namespace }}/${{ needs.detect.outputs.name }}/tests/output/reports/coverage.xml
+          badge: true
+          fail_below_min: true
+          format: markdown
+          hide_branch_rate: false
+          hide_complexity: true
+          indicators: true
+          output: both
+          thresholds: '60 80'
+
+      - name: Add Coverage PR Comment
+        uses: marocchino/sticky-pull-request-comment@v2
+        if: github.event_name == 'pull_request'
+        with:
+          message: |
+            ### 📊 Ansible Test Coverage Report
+            {{{content}}}
+
+            🔗 **[View the interactive, line-by-line coverage report](https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/)**
+            (reflects the latest merge to `main`, not this branch)
+          path: code-coverage-results.md
+          recreate: true
+
+  deploy:
+    needs: aggregate
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    name: Deploy coverage report to GitHub Pages
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5

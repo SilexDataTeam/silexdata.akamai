@@ -6,6 +6,10 @@ SPDX-License-Identifier: Apache-2.0
 
 # Silex Data Akamai Collection
 
+[![Lint](https://github.com/SilexDataTeam/silexdata.akamai/actions/workflows/lint.yml/badge.svg?branch=main)](https://github.com/SilexDataTeam/silexdata.akamai/actions/workflows/lint.yml)
+[![Nox](https://github.com/SilexDataTeam/silexdata.akamai/actions/workflows/nox.yml/badge.svg?branch=main)](https://github.com/SilexDataTeam/silexdata.akamai/actions/workflows/nox.yml)
+[![Coverage](https://github.com/SilexDataTeam/silexdata.akamai/actions/workflows/coverage.yml/badge.svg?branch=main)](https://github.com/SilexDataTeam/silexdata.akamai/actions/workflows/coverage.yml)
+
 This repository contains the `silexdata.akamai` Ansible Collection. The collection provides modules and plugins for managing Akamai resources and services with Ansible.
 
 ## Code of Conduct
