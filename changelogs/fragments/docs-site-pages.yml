@@ -9,3 +9,6 @@ trivial:
   - Have the "Coverage Report" badge in ``README.md`` show the live coverage percentage instead of a static label.
   - Drop the "Documentation" header badge, which read as another CI status badge next to ``Docs``.
   - Rely on the plain link already in the ``Documentation`` section instead.
+  - Add a ``docs/docsite/links.yml`` with a Coverage Report entry, so the docsite's homepage links to the coverage report too, using a relative URL.
+  - Add a ``docs/docsite/rst/coverage-report.rst`` page, regenerated in CI into a native summary table linking to the full report.
+  - Upload ``coverage.yml``'s HTML report on every run, not just ``main`` pushes, so every ``docs.yml`` build gets a per-commit summary.

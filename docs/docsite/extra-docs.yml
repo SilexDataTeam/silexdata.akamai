@@ -1,0 +1,5 @@
+---
+sections:
+  - title: Coverage
+    toctree:
+      - coverage-report
