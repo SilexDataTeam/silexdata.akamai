@@ -69,3 +69,46 @@ repos:
     hooks:
       - id: antsibull-changelog-lint
       - id: antsibull-changelog-lint-changelog-yaml
+
+  # Collection documentation linting: validates plugin DOCUMENTATION/EXAMPLES/
+  # RETURN schemas and extra docsite RST refs without doing a full Sphinx
+  # build. Mirrors the command the docs-check nox session runs (see
+  # antsibull-nox.toml), so failures here match what `nox -e docs-check` and
+  # CI would report. antsibull-docs has no official pre-commit mirror, so
+  # this runs it as a local hook. Uses a floor pin (unlike the rev-pinned
+  # hooks above) to match docs.yml's unpinned `pip install antsibull-docs`
+  # while still guaranteeing at least the version this config was verified
+  # against. Note pre-commit only re-resolves the dependency when it
+  # (re)builds the hook's cached environment - e.g. after `pre-commit clean`
+  # or a cache eviction - not on every run, so a local run can still lag
+  # behind CI between those.
+  - repo: local
+    hooks:
+      - id: antsibull-docs-lint
+        name: antsibull-docs lint-collection-docs
+        entry: antsibull-docs lint-collection-docs --plugin-docs --skip-rstcheck --check-extra-docs-refs .
+        language: python
+        additional_dependencies: ["antsibull-docs>=2.26.0"]
+        pass_filenames: false
+        files: ^(plugins/|docs/docsite/|galaxy\.yml$|meta/runtime\.yml$)
+
+  # Collection build + Galaxy importer check: builds the collection into a
+  # tarball and runs it through galaxy-importer's static checks (doc
+  # parsing, ansible-lint, runtime.yml/ignore-file sanity) the way Galaxy
+  # itself would on publish. Fully offline despite the name - no live Galaxy
+  # API call. Unlike the docs-check hook above, this one is driven through
+  # `nox -e build-import-check` itself rather than a mirrored raw command,
+  # since the underlying check is a multi-step build-then-import sequence
+  # (see antsibull-nox.toml) that's simpler to delegate to nox than to
+  # reimplement here. `-R` reuses nox's own cached session environment
+  # (typically ~6-7s) instead of reinstalling ansible-core/galaxy-importer on
+  # every commit (~17s cold); run `nox -e build-import-check` without `-R`,
+  # or clear the `.nox/build-import-check` directory, to force a refresh.
+  - repo: local
+    hooks:
+      - id: nox-build-import-check
+        name: nox build-import-check
+        entry: nox -R -e build-import-check
+        language: python
+        additional_dependencies: ["nox", "antsibull-nox"]
+        pass_filenames: false

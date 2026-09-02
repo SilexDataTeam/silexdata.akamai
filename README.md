@@ -8,7 +8,9 @@ SPDX-License-Identifier: Apache-2.0
 
 [![Lint](https://github.com/SilexDataTeam/silexdata.akamai/actions/workflows/lint.yml/badge.svg?branch=main)](https://github.com/SilexDataTeam/silexdata.akamai/actions/workflows/lint.yml)
 [![Nox](https://github.com/SilexDataTeam/silexdata.akamai/actions/workflows/nox.yml/badge.svg?branch=main)](https://github.com/SilexDataTeam/silexdata.akamai/actions/workflows/nox.yml)
+[![Docs](https://github.com/SilexDataTeam/silexdata.akamai/actions/workflows/docs.yml/badge.svg?branch=main)](https://github.com/SilexDataTeam/silexdata.akamai/actions/workflows/docs.yml)
 [![Coverage](https://github.com/SilexDataTeam/silexdata.akamai/actions/workflows/coverage.yml/badge.svg?branch=main)](https://github.com/SilexDataTeam/silexdata.akamai/actions/workflows/coverage.yml)
+[![Coverage Report](https://img.shields.io/endpoint?url=https://silexdatateam.github.io/silexdata.akamai/coverage/coverage-badge.json)](https://silexdatateam.github.io/silexdata.akamai/coverage/)
 
 This repository contains the `silexdata.akamai` Ansible Collection. The collection provides modules and plugins for managing Akamai resources and services with Ansible.
 
@@ -25,6 +27,14 @@ Some modules and plugins require external libraries. Please check the requiremen
 ## Included content
 
 Please check the included content on the [Ansible Galaxy page for this collection](https://galaxy.ansible.com/ui/repo/published/silexdata/akamai/).
+
+## Documentation
+
+The full collection documentation (module/plugin reference, generated with `antsibull-docs`) is published on
+[GitHub Pages](https://silexdatateam.github.io/silexdata.akamai/).
+
+The [interactive, line-by-line test coverage report](https://silexdatateam.github.io/silexdata.akamai/coverage/) is
+published alongside it, reflecting the latest merge to `main`.
 
 ## Using this collection
 

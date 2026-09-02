@@ -1,0 +1,145 @@
+---
+name: Docs
+
+# Builds the antsibull-docs Sphinx docsite for the collection and deploys it
+# to GitHub Pages, alongside the HTML coverage report built by coverage.yml
+# (fetched via the download-latest-artifact composite action, since
+# deploy-pages accepts only one artifact per deployment). Runs on every
+# push/PR to catch docs build breakage early; the HTML artifact itself is
+# only kept, and Pages only deployed, on pushes to main.
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  detect:
+    name: Detect collection namespace/name
+    runs-on: ubuntu-latest
+    outputs:
+      namespace: ${{ steps.galaxy.outputs.namespace }}
+      name: ${{ steps.galaxy.outputs.name }}
+    steps:
+      - name: Check out collection
+        uses: actions/checkout@v7
+
+      - name: Read namespace/name from galaxy.yml
+        id: galaxy
+        run: |
+          namespace=$(grep -m1 '^namespace:' galaxy.yml | awk '{print $2}')
+          name=$(grep -m1 '^name:' galaxy.yml | awk '{print $2}')
+          echo "namespace=${namespace}" >> "$GITHUB_OUTPUT"
+          echo "name=${name}" >> "$GITHUB_OUTPUT"
+
+  docs:
+    needs: detect
+    name: Build collection documentation
+    runs-on: ubuntu-latest
+    env:
+      # antsibull-docs sphinx-init auto-detects the collection from its
+      # working directory (the collection root), but build.sh's own
+      # antsibull-docs/ansible-doc invocation runs one directory deeper, in
+      # docsbuild/, where that auto-detection no longer applies. Point
+      # ansible-doc at the checkout root explicitly so --use-current can
+      # still find the in-place collection instead of requiring it to be
+      # installed.
+      ANSIBLE_COLLECTIONS_PATH: ${{ github.workspace }}
+    steps:
+      - name: Check out collection
+        uses: actions/checkout@v7
+        with:
+          path: ansible_collections/${{ needs.detect.outputs.namespace }}/${{ needs.detect.outputs.name }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install ansible-core and antsibull-docs
+        run: python -m pip install "ansible-core~=2.21.0" antsibull-docs
+
+      - name: Generate Sphinx docsite project
+        working-directory: ansible_collections/${{ needs.detect.outputs.namespace }}/${{ needs.detect.outputs.name }}
+        run: |
+          mkdir -p docsbuild
+          antsibull-docs sphinx-init --use-current --squash-hierarchy \
+            --dest-dir docsbuild ${{ needs.detect.outputs.namespace }}.${{ needs.detect.outputs.name }}
+
+      - name: Build HTML docsite
+        working-directory: ansible_collections/${{ needs.detect.outputs.namespace }}/${{ needs.detect.outputs.name }}/docsbuild
+        run: |
+          python -m pip install -r requirements.txt
+          ./build.sh
+
+      - name: Upload documentation site artifact
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        uses: actions/upload-artifact@v7
+        with:
+          name: docs-html
+          path: ansible_collections/${{ needs.detect.outputs.namespace }}/${{ needs.detect.outputs.name }}/docsbuild/build/html
+          if-no-files-found: error
+          retention-days: 1
+
+  deploy:
+    needs: docs
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    name: Deploy docs + coverage report to GitHub Pages
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      # Assemble a single site: this workflow's own docsite at the root, and
+      # the coverage report (built by the separate Coverage workflow) nested
+      # under /coverage/, since deploy-pages publishes exactly one artifact
+      # per deployment. The coverage report is fetched from Coverage's
+      # latest successful run on main rather than built here - that run may
+      # finish slightly before or after this one for the same push, and
+      # self-corrects on the next push either way.
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Download documentation site
+        uses: actions/download-artifact@v8
+        with:
+          name: docs-html
+          path: site
+
+      - name: Download coverage report
+        uses: ./.github/actions/download-latest-artifact
+        with:
+          workflow: coverage.yml
+          artifact-name: coverage-html
+          path: site/coverage
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v6
+
+      - name: Upload combined site artifact
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: site
+          retention-days: 1
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5
