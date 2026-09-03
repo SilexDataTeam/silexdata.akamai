@@ -1,0 +1,12 @@
+---
+# Rendered as a link button on the generated docsite's collection homepage,
+# alongside the Issue Tracker/Homepage/Repository links antsibull-docs
+# derives automatically from galaxy.yml. Points at the coverage report
+# docs.yml publishes to GitHub Pages alongside this docsite (see
+# coverage.yml and the wait-for-workflow-artifact composite action).
+# Relative rather than absolute: the homepage this renders on sits at the
+# site root, the same level /coverage/ is nested at once docs.yml's deploy
+# job combines both into one GitHub Pages deployment.
+extra_links:
+  - description: Coverage Report
+    url: coverage/

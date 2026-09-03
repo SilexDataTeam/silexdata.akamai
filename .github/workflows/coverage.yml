@@ -128,13 +128,17 @@ jobs:
       - name: Install ansible-core
         run: python -m pip install "ansible-core~=2.21.0"
 
+      # Pattern-based downloads never fail on zero matches (unlike a
+      # name-based download): if every matrix leg failed before uploading,
+      # this step still succeeds with nothing downloaded, and the coverage
+      # generation steps below run against empty data rather than blocking
+      # this always-run job.
       - name: Download coverage data from all matrix legs
         uses: actions/download-artifact@v8
         with:
           pattern: coverage-data-*
           path: ansible_collections/${{ needs.detect.outputs.namespace }}/${{ needs.detect.outputs.name }}/tests/output/coverage
           merge-multiple: true
-          if-no-artifact-found: warn
 
       - name: Generate aggregated coverage report
         working-directory: ansible_collections/${{ needs.detect.outputs.namespace }}/${{ needs.detect.outputs.name }}
@@ -166,15 +170,16 @@ jobs:
               )
           PY
 
-      # Coverage is only published to GitHub Pages from main, since
-      # deploy-pages has no per-PR preview support (it's alpha-only, not
-      # generally available). PRs get the summary comment below instead.
-      # The report is uploaded as a plain artifact here; the Docs workflow's
-      # deploy job fetches it (via the download-latest-artifact composite
-      # action) and combines it with the docsite into a single Pages
-      # deployment, with the coverage report nested under /coverage/.
+      # Uploaded unconditionally (not just on pushes to main): docs.yml's
+      # docs job waits on this artifact for every push/PR to generate a
+      # native coverage summary page for that exact commit, even though the
+      # report itself is only ever deployed to GitHub Pages from main - see
+      # the deploy-pages/per-PR-preview note on the PR comment step below.
+      # The Docs workflow's deploy job also fetches this same artifact (via
+      # the wait-for-workflow-artifact composite action) and combines it
+      # with the docsite into a single Pages deployment, with the coverage
+      # report nested under /coverage/.
       - name: Upload HTML coverage report artifact
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
         uses: actions/upload-artifact@v7
         with:
           name: coverage-html
@@ -196,6 +201,10 @@ jobs:
           output: both
           thresholds: '60 80'
 
+      # Coverage is only published to GitHub Pages from main, since
+      # deploy-pages has no per-PR preview support (it's alpha-only, not
+      # generally available), so this links to main's deployed report
+      # rather than a per-PR one.
       - name: Add Coverage PR Comment
         uses: marocchino/sticky-pull-request-comment@v2
         if: github.event_name == 'pull_request'

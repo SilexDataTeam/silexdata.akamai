@@ -1,0 +1,94 @@
+---
+name: Wait for workflow run and download artifact
+description: >-
+  Waits for another workflow's run for a specific commit to complete, then
+  downloads a named artifact from it. Used to stitch artifacts together
+  across independent workflows triggered by the same push (e.g. combining a
+  docs site and a coverage report into one GitHub Pages deployment) without
+  racing that other workflow's completion or falling back to a stale run.
+inputs:
+  workflow:
+    description: Workflow file name to search (e.g. coverage.yml).
+    required: true
+  head-sha:
+    description: Commit SHA the target workflow run must have been triggered by.
+    required: true
+  artifact-name:
+    description: Name of the artifact to download.
+    required: true
+  path:
+    description: Destination directory for the downloaded artifact.
+    required: true
+  github-token:
+    description: Token used to query the Actions API and download the artifact.
+    required: true
+  timeout-minutes:
+    description: How long to wait for the run to complete before giving up.
+    required: false
+    default: "20"
+  poll-interval-seconds:
+    description: How often to re-check the run's status while waiting.
+    required: false
+    default: "30"
+runs:
+  using: composite
+  steps:
+    - name: Wait for ${{ inputs.workflow }} run on ${{ inputs.head-sha }}
+      id: find_run
+      uses: actions/github-script@v7
+      with:
+        github-token: ${{ inputs.github-token }}
+        script: |
+          const workflow_id = "${{ inputs.workflow }}";
+          const head_sha = "${{ inputs.head-sha }}";
+          const deadline =
+            Date.now() + ${{ inputs.timeout-minutes }} * 60 * 1000;
+          const pollMs = ${{ inputs.poll-interval-seconds }} * 1000;
+
+          let run;
+          for (;;) {
+            const { data } = await github.rest.actions.listWorkflowRuns({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id,
+              head_sha,
+              per_page: 1,
+            });
+            run = data.workflow_runs[0];
+            if (run && run.status === "completed") {
+              break;
+            }
+            if (Date.now() >= deadline) {
+              core.setFailed(
+                run
+                  ? `Timed out waiting for ${workflow_id} run ${run.id} ` +
+                    `(commit ${head_sha}) to complete; last status: ${run.status}.`
+                  : `Timed out waiting for a run of ${workflow_id} for ` +
+                    `commit ${head_sha} to appear.`
+              );
+              return;
+            }
+            core.info(
+              `Waiting on ${workflow_id} for commit ${head_sha} ` +
+              `(status: ${run ? run.status : "not started"})...`
+            );
+            await new Promise((resolve) => setTimeout(resolve, pollMs));
+          }
+
+          if (run.conclusion !== "success") {
+            core.setFailed(
+              `${workflow_id} run ${run.id} for commit ${head_sha} finished ` +
+              `with conclusion "${run.conclusion}", not "success".`
+            );
+            return;
+          }
+
+          core.setOutput("run_id", run.id);
+
+    - name: Download ${{ inputs.artifact-name }}
+      uses: actions/download-artifact@v8
+      with:
+        name: ${{ inputs.artifact-name }}
+        path: ${{ inputs.path }}
+        github-token: ${{ inputs.github-token }}
+        run-id: ${{ steps.find_run.outputs.run_id }}

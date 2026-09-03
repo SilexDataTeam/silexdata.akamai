@@ -3,10 +3,13 @@ name: Docs
 
 # Builds the antsibull-docs Sphinx docsite for the collection and deploys it
 # to GitHub Pages, alongside the HTML coverage report built by coverage.yml
-# (fetched via the download-latest-artifact composite action, since
+# (fetched via the wait-for-workflow-artifact composite action, since
 # deploy-pages accepts only one artifact per deployment). Runs on every
 # push/PR to catch docs build breakage early; the HTML artifact itself is
-# only kept, and Pages only deployed, on pushes to main.
+# only kept, and Pages only deployed, on pushes to main. The docs job also
+# waits on coverage.yml's run for the same commit (coverage.yml runs on the
+# same push/PR triggers) to generate a native coverage summary page, so
+# every docs build - not just pushes to main - reflects that exact commit.
 on:
   push:
     branches:
@@ -48,6 +51,9 @@ jobs:
     needs: detect
     name: Build collection documentation
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
     env:
       # antsibull-docs sphinx-init auto-detects the collection from its
       # working directory (the collection root), but build.sh's own
@@ -58,6 +64,15 @@ jobs:
       # installed.
       ANSIBLE_COLLECTIONS_PATH: ${{ github.workspace }}
     steps:
+      # uses: does not support expressions built from job contexts like
+      # needs (actionlint and GitHub Actions itself both reject it - no
+      # context is available there), so this local composite action can't be
+      # referenced through the dynamic namespace/name path used elsewhere in
+      # this job. A plain root checkout gives it a static path instead,
+      # mirroring how the deploy job below already does this.
+      - name: Check out repository
+        uses: actions/checkout@v7
+
       - name: Check out collection
         uses: actions/checkout@v7
         with:
@@ -70,6 +85,30 @@ jobs:
 
       - name: Install ansible-core and antsibull-docs
         run: python -m pip install "ansible-core~=2.21.0" antsibull-docs
+
+      # coverage.yml runs on the same push/PR triggers as this workflow, so
+      # its run for this commit may still be in progress; wait-for-workflow-
+      # artifact polls until that exact commit's run completes. github.sha
+      # is wrong here for pull_request events - it's the synthetic merge
+      # commit on refs/pull/N/merge, which never matches a workflow run's
+      # real head_sha, so this would poll until timeout. Use the PR's actual
+      # head commit for pull_request events, falling back to github.sha for
+      # push/workflow_dispatch, where it's already correct.
+      - name: Wait for coverage report
+        uses: ./.github/actions/wait-for-workflow-artifact
+        with:
+          workflow: coverage.yml
+          head-sha: ${{ github.event.pull_request.head.sha || github.sha }}
+          artifact-name: coverage-html
+          path: coverage-html
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate coverage summary page
+        working-directory: ansible_collections/${{ needs.detect.outputs.namespace }}/${{ needs.detect.outputs.name }}
+        run: |
+          mkdir -p docs/docsite/rst
+          python3 .github/scripts/generate_coverage_summary.py \
+            "${GITHUB_WORKSPACE}/coverage-html/index.html" docs/docsite/rst/coverage-report.rst
 
       - name: Generate Sphinx docsite project
         working-directory: ansible_collections/${{ needs.detect.outputs.namespace }}/${{ needs.detect.outputs.name }}
@@ -110,10 +149,13 @@ jobs:
       # Assemble a single site: this workflow's own docsite at the root, and
       # the coverage report (built by the separate Coverage workflow) nested
       # under /coverage/, since deploy-pages publishes exactly one artifact
-      # per deployment. The coverage report is fetched from Coverage's
-      # latest successful run on main rather than built here - that run may
-      # finish slightly before or after this one for the same push, and
-      # self-corrects on the next push either way.
+      # per deployment. Coverage.yml triggers on the same push, so its run
+      # for this commit may still be in progress (or not yet started) when
+      # this step runs; wait-for-workflow-artifact polls until that exact
+      # commit's run completes rather than grabbing whatever the latest
+      # successful run on the branch happens to be, so the deployed report
+      # always matches this commit and this job fails loudly instead of
+      # racing ahead of a coverage run that hasn't produced its artifact yet.
       - name: Check out repository
         uses: actions/checkout@v7
 
@@ -123,10 +165,15 @@ jobs:
           name: docs-html
           path: site
 
-      - name: Download coverage report
-        uses: ./.github/actions/download-latest-artifact
+      # This job only ever runs for push events (see the job-level if:
+      # above), where github.sha is already the real commit - the fallback
+      # expression is only load-bearing in the docs job's identical step,
+      # kept here too so both stay in sync.
+      - name: Wait for coverage report
+        uses: ./.github/actions/wait-for-workflow-artifact
         with:
           workflow: coverage.yml
+          head-sha: ${{ github.event.pull_request.head.sha || github.sha }}
           artifact-name: coverage-html
           path: site/coverage
           github-token: ${{ secrets.GITHUB_TOKEN }}
