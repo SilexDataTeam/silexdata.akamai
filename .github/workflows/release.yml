@@ -1,22 +1,26 @@
 ---
+# SPDX-FileCopyrightText: Silex Data Solutions
+# SPDX-License-Identifier: Apache-2.0
 name: Release
 
-# When a PR is merged into main, cut a release: derive the next semver version
-# from the pending changelog fragments, generate the changelog, bump galaxy.yml,
-# push the release commit + tag directly to main, then build and publish the
-# collection to Ansible Galaxy.
-#
-# Merges whose fragments are only "trivial"/"release_summary" entries do not
-# warrant a version bump, so they are skipped (no release).
+# Thin caller - see reusable-release.yml in the collection_skeleton repo.
 #
 # Required repository secrets:
-#   RELEASE_TOKEN  - PAT (or deploy key) allowed to push to the protected main
-#                    branch. Used by actions/checkout for the release push/tag.
-#   GALAXY_API_KEY - Ansible Galaxy API key for the silexdata namespace.
+#   RELEASE_TOKEN  - PAT allowed to push to the protected main branch.
+#   GALAXY_API_KEY - Ansible Galaxy API key for this collection's namespace.
 on:
   pull_request:
     types:
       - closed
+  # Finishes a release whose commit and tag were pushed but whose publishing
+  # failed: Actions > Release > Run workflow, giving that tag. Steps that
+  # already succeeded are skipped.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to finish publishing, e.g. 1.0.0.
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -27,110 +31,11 @@ concurrency:
 
 jobs:
   release:
-    name: Release on merge to main
-    if: >-
-      github.event.pull_request.merged == true &&
-      github.event.pull_request.base.ref == 'main'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check out main
-        uses: actions/checkout@v7
-        with:
-          ref: main
-          fetch-depth: 0
-          token: ${{ secrets.RELEASE_TOKEN }}
-
-      - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: "3.14"
-
-      - name: Install release tooling
-        run: python -m pip install antsibull-changelog ansible-core pyyaml
-
-      - name: Compute next version from changelog fragments
-        id: ver
-        run: |
-          python3 - <<'PY' >> "$GITHUB_OUTPUT"
-          import glob
-
-          import yaml
-
-          with open("galaxy.yml") as fh:
-              galaxy = yaml.safe_load(fh)
-          major, minor, patch = (int(p) for p in str(galaxy["version"]).split("."))
-
-          fragments = sorted(
-              glob.glob("changelogs/fragments/*.yml")
-              + glob.glob("changelogs/fragments/*.yaml")
-          )
-          sections = set()
-          for path in fragments:
-              with open(path) as fh:
-                  data = yaml.safe_load(fh) or {}
-              sections.update(data.keys())
-
-          # Sections that do not, on their own, warrant a release. A merge whose
-          # fragments only touch these is a no-op for versioning.
-          non_release = {"trivial", "release_summary"}
-          release_sections = sections - non_release
-
-          major_bump = {"breaking_changes", "major_changes", "removed_features"}
-          if not release_sections:
-              print("release=false")
-          else:
-              if release_sections & major_bump:
-                  major, minor, patch = major + 1, 0, 0
-              elif "minor_changes" in release_sections:
-                  minor, patch = minor + 1, 0
-              else:
-                  patch += 1
-              print("release=true")
-              print(f"version={major}.{minor}.{patch}")
-          PY
-
-      - name: Nothing to release
-        if: steps.ver.outputs.release != 'true'
-        run: echo "No release-worthy changelog fragments; skipping release."
-
-      - name: Bump galaxy.yml version
-        if: steps.ver.outputs.release == 'true'
-        run: |
-          sed -i -E "s/^version:.*/version: ${{ steps.ver.outputs.version }}/" galaxy.yml
-
-      - name: Generate changelog for the release
-        if: steps.ver.outputs.release == 'true'
-        run: antsibull-changelog release --version "${{ steps.ver.outputs.version }}"
-
-      - name: Commit, push, and tag the release
-        if: steps.ver.outputs.release == 'true'
-        env:
-          VERSION: ${{ steps.ver.outputs.version }}
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A galaxy.yml CHANGELOG.md changelogs/
-          git commit -m "chore(release): ${VERSION}"
-          git push origin HEAD:main
-          git tag "${VERSION}"
-          git push origin "${VERSION}"
-
-      - name: Build and publish to Ansible Galaxy
-        if: steps.ver.outputs.release == 'true'
-        env:
-          VERSION: ${{ steps.ver.outputs.version }}
-        run: |
-          ansible-galaxy collection build --output-path dist --force
-          ansible-galaxy collection publish "dist/silexdata-akamai-${VERSION}.tar.gz" \
-            --api-key "${{ secrets.GALAXY_API_KEY }}"
-
-      - name: Create GitHub release
-        if: steps.ver.outputs.release == 'true'
-        env:
-          GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
-          VERSION: ${{ steps.ver.outputs.version }}
-        run: |
-          gh release create "${VERSION}" \
-            "dist/silexdata-akamai-${VERSION}.tar.gz" \
-            --title "${VERSION}" \
-            --generate-notes
+    # No-op in every generated collection repo; skips only in the
+    # collection_skeleton template itself, which has no root galaxy.yml
+    # for the reusable workflow's detect job to read.
+    if: github.repository != 'SilexDataTeam/silexdata.collection_skeleton'
+    uses: SilexDataTeam/silexdata.collection_skeleton/.github/workflows/reusable-release.yml@v1
+    with:
+      resume-tag: ${{ inputs.tag }}
+    secrets: inherit

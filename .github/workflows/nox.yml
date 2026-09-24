@@ -1,15 +1,11 @@
 ---
-# Run all default antsibull-nox sessions.
-#
-# Non-matrix sessions (lint, docs_check, ansible_lint, build_import_check,
-# extra_checks) run as individual jobs.  Matrix sessions (ansible_test_sanity,
-# ansible_test_units) generate one job per ansible-core × Python pair.
-#
-# This workflow replaces the separate sanity.yml and units.yml workflows.
-# Integration tests still run via integration.yml (ansible-test directly)
-# because of the service-availability warning annotation.
+# SPDX-FileCopyrightText: Silex Data Solutions
+# SPDX-License-Identifier: Apache-2.0
 name: Nox
 
+# Thin caller - see reusable-nox.yml in the collection_skeleton repo.
+# min-ansible-core is derived from this collection's meta/runtime.yml, so
+# nothing needs passing here.
 on:
   push:
     branches:
@@ -25,24 +21,9 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  detect:
-    name: Detect collection minimum ansible-core requirement
-    runs-on: ubuntu-latest
-    outputs:
-      requires_ansible: ${{ steps.ansible.outputs.requires_ansible }}
-    steps:
-      - name: Check out collection
-        uses: actions/checkout@v7
-
-      - name: Read minimum ansible-core requirement from meta/runtime.yml
-        id: ansible
-        run: |
-          requires_ansible=$(grep -m1 '^requires_ansible:' meta/runtime.yml | sed -E "s/^requires_ansible:[^0-9]*([0-9]+\.[0-9]+).*/\1/")
-          echo "requires_ansible=${requires_ansible}" >> "$GITHUB_OUTPUT"
   nox:
-    needs: detect
-    uses: ansible-community/antsibull-nox/.github/workflows/reusable-nox-matrix.yml@stable-1
-    with:
-      # Match the collection's minimum ansible-core requirement from
-      # meta/runtime.yml (requires_ansible: '>=2.14.0').
-      min-ansible-core: ${{ needs.detect.outputs.requires_ansible }}
+    # No-op in every generated collection repo; skips only in the
+    # collection_skeleton template itself, which has no root galaxy.yml
+    # for the reusable workflow's detect job to read.
+    if: github.repository != 'SilexDataTeam/silexdata.collection_skeleton'
+    uses: SilexDataTeam/silexdata.collection_skeleton/.github/workflows/reusable-nox.yml@v1

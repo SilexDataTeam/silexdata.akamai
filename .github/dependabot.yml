@@ -1,0 +1,25 @@
+---
+# SPDX-FileCopyrightText: Silex Data Solutions
+# SPDX-License-Identifier: Apache-2.0
+version: 2
+updates:
+  # Keeps the @v1 pins in this collection's thin caller workflows current, so
+  # a new major of the shared CI in silexdata.collection_skeleton arrives here
+  # as a reviewable PR rather than silently or never.
+  #
+  # "/" is sufficient because the callers are the only workflows here and they
+  # reference no third-party actions. If this collection ever grows its own
+  # composite action under .github/actions/<name>/, add it explicitly - for the
+  # github-actions ecosystem "/" searches .github/workflows/ and a root-level
+  # action.yml only, and does not recurse:
+  #
+  #   directories:
+  #     - /
+  #     - /.github/actions/*
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    labels:
+      - dependencies
+      - github-actions

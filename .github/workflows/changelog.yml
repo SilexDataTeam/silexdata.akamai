@@ -1,11 +1,9 @@
 ---
+# SPDX-FileCopyrightText: Silex Data Solutions
+# SPDX-License-Identifier: Apache-2.0
 name: Changelog
 
-# Validate that every pull request into main adds or updates a changelog
-# fragment. Modifying an existing fragment counts - a PR that extends earlier
-# work doesn't need a brand new file, just changelog-worthy content somewhere
-# under changelogs/fragments/. Fragment syntax itself is linted by the Lint
-# workflow (pre-commit runs the antsibull-changelog hooks).
+# Thin caller - see reusable-changelog.yml in the collection_skeleton repo.
 on:
   pull_request:
     branches:
@@ -19,25 +17,9 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  fragment-present:
-    name: Require a changelog fragment
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check out PR
-        uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-
-      - name: Ensure a changelog fragment was added or updated
-        env:
-          BASE: ${{ github.base_ref }}
-        run: |
-          git fetch --quiet origin "$BASE"
-          changed=$(git diff --name-only --diff-filter=AM "origin/${BASE}...HEAD" \
-            -- 'changelogs/fragments/' | grep -vE '/\.gitkeep$' || true)
-          if [ -z "$changed" ]; then
-            echo "::error::No changelog fragment added or updated under changelogs/fragments/ - add or extend one describing your change."
-            exit 1
-          fi
-          echo "Found added/updated changelog fragment(s):"
-          echo "$changed"
+  changelog:
+    # No-op in every generated collection repo; skips only in the
+    # collection_skeleton template itself, which has no root galaxy.yml
+    # for the reusable workflow's detect job to read.
+    if: github.repository != 'SilexDataTeam/silexdata.collection_skeleton'
+    uses: SilexDataTeam/silexdata.collection_skeleton/.github/workflows/reusable-changelog.yml@v1

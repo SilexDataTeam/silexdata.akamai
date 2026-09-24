@@ -76,6 +76,7 @@ options:
 '''
 
 EXAMPLES = r'''
+---
 - name: Gather siteshield maps
   silexdata.akamai.manage_akamai:
     method: GET
