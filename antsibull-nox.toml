@@ -23,6 +23,11 @@ run_ruff_check = true       # ruff check read-only (codeqa session)
 run_flake8 = false          # ruff supersedes flake8
 run_pylint = false          # ruff covers most pylint rules; module code is simple
 run_mypy = false            # module files lack type annotations
+run_yamllint = true
+# Set explicitly so the YAML embedded in plugin DOCUMENTATION/EXAMPLES/RETURN
+# strings is linted against .yamllint too; unset, antsibull-nox lints those
+# blocks against yamllint's bare defaults (80-column lines).
+yamllint_config = ".yamllint"
 
 # ---------------------------------------------------------------------------
 # Ansible-lint
@@ -59,7 +64,13 @@ run_no_trailing_whitespace = true
 # ansible-test sanity
 # ---------------------------------------------------------------------------
 [sessions.ansible_test_sanity]
-default = true
+# Not a *default* session, deliberately (antsibull-nox's own default). CI runs
+# the ansible-test sessions through antsibull-nox's matrix workflow, which runs
+# them regardless; marking them default would also make the Nox workflow's
+# "Run extra sanity tests" job - which runs every default session - repeat the
+# whole matrix sequentially, and the shared Nox workflow refuses that config.
+# Run them locally with `nox -e ansible-test-sanity`.
+default = false
 # Minimum ansible-core version matches galaxy.yml requires_ansible (>=2.14.0).
 min_version = "2.14"
 
@@ -67,14 +78,18 @@ min_version = "2.14"
 # ansible-test units
 # ---------------------------------------------------------------------------
 [sessions.ansible_test_units]
-default = true
+# Not default, for the same reason as ansible_test_sanity above.
+# Run locally with `nox -e ansible-test-units`.
+default = false
 min_version = "2.14"
 
 # ---------------------------------------------------------------------------
-# Execution environment check (opt-in: no EE configs in this collection)
+# Execution environment check
 # ---------------------------------------------------------------------------
-[sessions.execution_environment_check]
-default = false
+# Not configured: this collection defines no execution environment. To add
+# one, add a [sessions.ee_check] section with an execution_environments list
+# (the older name, execution_environment_check, is rejected by
+# `nox -e antsibull-nox-config`).
 
 # ---------------------------------------------------------------------------
 # ansible-test integration (default container, opt-in)
