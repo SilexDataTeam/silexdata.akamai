@@ -66,10 +66,12 @@ issues: https://github.com/SilexDataTeam/silexdata.akamai/issues
 # and '.git' are always filtered
 build_ignore:
   - .github
+  - .claude
   - .gitignore
   - .pre-commit-config.yaml
   - .yamllint
   - .pymarkdown.json
+  - .markdownlint.json
   - .ansible-lint
   - pyproject.toml
   - noxfile.py
