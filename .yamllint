@@ -1,5 +1,7 @@
 ---
-# yamllint configuration for the silexdata.akamai collection.
+# SPDX-FileCopyrightText: Silex Data Solutions
+# SPDX-License-Identifier: Apache-2.0
+# yamllint configuration for this collection.
 # See https://yamllint.readthedocs.io/
 
 extends: default

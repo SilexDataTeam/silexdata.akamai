@@ -1,5 +1,7 @@
 ---
-# ansible-lint configuration for the silexdata.akamai collection.
+# SPDX-FileCopyrightText: Silex Data Solutions
+# SPDX-License-Identifier: Apache-2.0
+# ansible-lint configuration for this collection.
 # See https://ansible.readthedocs.io/projects/lint/configuring/
 #
 # Start at the "moderate" profile to keep the pipeline green on the existing

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Silex Data Solutions
+# SPDX-License-Identifier: Apache-2.0
 # /// script
 # dependencies = ["nox>=2025.02.09", "antsibull-nox"]
 # ///

@@ -1,5 +1,7 @@
 ---
-# Pre-commit hooks for the silexdata.akamai collection.
+# SPDX-FileCopyrightText: Silex Data Solutions
+# SPDX-License-Identifier: Apache-2.0
+# Pre-commit hooks for this Silex Data Ansible collection.
 #
 # Setup (one time, per clone):
 #   pip install pre-commit
@@ -86,7 +88,7 @@ repos:
   # antsibull-nox.toml), so failures here match what `nox -e docs-check` and
   # CI would report. antsibull-docs has no official pre-commit mirror, so
   # this runs it as a local hook. Uses a floor pin (unlike the rev-pinned
-  # hooks above) to match docs.yml's unpinned `pip install antsibull-docs`
+  # hooks above) to match the CI job's unpinned `pip install antsibull-docs`
   # while still guaranteeing at least the version this config was verified
   # against. Note pre-commit only re-resolves the dependency when it
   # (re)builds the hook's cached environment - e.g. after `pre-commit clean`
@@ -106,14 +108,10 @@ repos:
   # tarball and runs it through galaxy-importer's static checks (doc
   # parsing, ansible-lint, runtime.yml/ignore-file sanity) the way Galaxy
   # itself would on publish. Fully offline despite the name - no live Galaxy
-  # API call. Unlike the docs-check hook above, this one is driven through
-  # `nox -e build-import-check` itself rather than a mirrored raw command,
-  # since the underlying check is a multi-step build-then-import sequence
-  # (see antsibull-nox.toml) that's simpler to delegate to nox than to
-  # reimplement here. `-R` reuses nox's own cached session environment
-  # (typically ~6-7s) instead of reinstalling ansible-core/galaxy-importer on
-  # every commit (~17s cold); run `nox -e build-import-check` without `-R`,
-  # or clear the `.nox/build-import-check` directory, to force a refresh.
+  # API call. `-R` reuses nox's cached session environment instead of
+  # reinstalling ansible-core/galaxy-importer on every commit; run
+  # `nox -e build-import-check` without `-R`, or clear the
+  # `.nox/build-import-check` directory, to force a refresh.
   - repo: local
     hooks:
       - id: nox-build-import-check
