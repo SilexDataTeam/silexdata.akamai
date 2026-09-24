@@ -1,4 +1,6 @@
-# Project tooling configuration for the silexdata.akamai collection.
+# SPDX-FileCopyrightText: Silex Data Solutions
+# SPDX-License-Identifier: Apache-2.0
+# Project tooling configuration for this collection.
 # This file configures developer tooling only; it is not part of the published
 # collection artifact (see build_ignore in galaxy.yml).
 
@@ -32,9 +34,12 @@ select = ["E", "W", "F", "I", "UP", "B"]
 ignore = ["UP001", "UP010", "UP026", "UP036"]
 
 [tool.ruff.lint.per-file-ignores]
-# Ansible modules must declare DOCUMENTATION/EXAMPLES/RETURN before their
-# imports, which conflicts with E402 (module-level import not at top of file).
+# Ansible modules and the other documentable plugin types declare
+# DOCUMENTATION/EXAMPLES/RETURN before their imports, which conflicts with E402
+# (module-level import not at top of file). module_utils and doc_fragments
+# carry no such blocks, so E402 stays enforced there.
 "plugins/modules/*.py" = ["E402", "UP026"]
+"plugins/{action,become,cache,callback,cliconf,connection,filter,httpapi,inventory,lookup,netconf,shell,strategy,test,vars}/*.py" = ["E402"]
 
 [tool.ruff.format]
 quote-style = "preserve"

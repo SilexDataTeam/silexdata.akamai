@@ -15,5 +15,10 @@
     "md059": {
       "enabled": false
     }
+  },
+  "extensions": {
+    "front-matter": {
+      "enabled": true
+    }
   }
 }
