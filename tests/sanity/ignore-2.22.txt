@@ -1,0 +1,1 @@
+plugins/modules/manage_akamai.py validate-modules:missing-gplv3-license
