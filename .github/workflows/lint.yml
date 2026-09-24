@@ -1,6 +1,11 @@
 ---
+# SPDX-FileCopyrightText: Silex Data Solutions
+# SPDX-License-Identifier: Apache-2.0
 name: Lint
 
+# Thin caller. All logic lives in the collection_skeleton repo, which is the
+# single source of truth for collection CI; update it there and bump the pin
+# here (Dependabot does this automatically).
 on:
   push:
     branches:
@@ -16,20 +21,9 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  pre-commit:
-    name: pre-commit (lint)
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v7
-
-      - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: "3.14"
-
-      - name: Install pre-commit
-        run: python -m pip install pre-commit
-
-      - name: Run pre-commit on all files
-        run: pre-commit run --all-files --show-diff-on-failure
+  lint:
+    # No-op in every generated collection repo; skips only in the
+    # collection_skeleton template itself, which has no root galaxy.yml
+    # for the reusable workflow's detect job to read.
+    if: github.repository != 'SilexDataTeam/silexdata.collection_skeleton'
+    uses: SilexDataTeam/silexdata.collection_skeleton/.github/workflows/reusable-lint.yml@v1

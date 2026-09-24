@@ -1,0 +1,31 @@
+---
+# SPDX-FileCopyrightText: Silex Data Solutions
+# SPDX-License-Identifier: Apache-2.0
+name: Sync from the skeleton
+
+# Thin caller. Keeps the files the collection_skeleton repo's sync-manifest.txt
+# lists - .claude/ (everything but CLAUDE.md, which stays this collection's own)
+# and the shared tooling configuration - identical to the skeleton's, and
+# proposes any drift as a pull request. Where the
+# organization forbids GitHub Actions from opening PRs, the run warns with a
+# one-click link to open it instead. A PR opened by this workflow needs a
+# maintainer to select "Approve workflows to run" before its checks report.
+on:
+  schedule:
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  sync-rules:
+    # Skips only in the collection_skeleton template itself, whose .claude/
+    # is the template's own rather than a copy of skeleton/.claude/.
+    if: github.repository != 'SilexDataTeam/silexdata.collection_skeleton'
+    uses: SilexDataTeam/silexdata.collection_skeleton/.github/workflows/reusable-sync-rules.yml@v1

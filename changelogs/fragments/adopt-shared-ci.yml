@@ -1,0 +1,5 @@
+---
+trivial:
+  - CI - run the shared reusable workflows from silexdata.collection_skeleton
+    instead of this repository's own copies, and sync the skeleton-managed
+    files from it weekly.
