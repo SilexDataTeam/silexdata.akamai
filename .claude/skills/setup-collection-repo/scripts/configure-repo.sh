@@ -77,7 +77,7 @@ cmd_pages() {
   fi
 }
 
-# Lets the Sync Claude rules workflow open its PR with GITHUB_TOKEN. An
+# Lets the Sync from the skeleton workflow open its PR with GITHUB_TOKEN. An
 # organization policy can forbid it for every repo; that is reported, not
 # treated as failure, because the workflow then falls back to warning with a
 # link that opens the PR in one click.
@@ -95,10 +95,10 @@ cmd_actions_prs() {
   fi
   if out=$(gh api -X PUT "repos/${repo}/actions/permissions/workflow" \
     -f default_workflow_permissions="$default" -F can_approve_pull_request_reviews=true 2>&1); then
-    echo "GitHub Actions may now create pull requests (the rules sync opens its own PR)."
+    echo "GitHub Actions may now create pull requests (the skeleton sync opens its own PR)."
   elif grep -q "organization does not allow" <<<"$out"; then
     echo "The organization forbids GitHub Actions from creating pull requests, so this repo"
-    echo "cannot allow it. The rules sync still runs: it pushes its branch and warns with a"
+    echo "cannot allow it. The skeleton sync still runs: it pushes its branch and warns with a"
     echo "one-click link to open the PR. An organization owner can lift the policy under"
     echo "Settings > Actions > General > Workflow permissions."
   else

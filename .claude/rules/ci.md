@@ -43,6 +43,13 @@ repeat the whole matrix, so the Nox workflow fails if any of them - or
 `ee_check` - is set `default = true`. To enforce something new, make it a default nox
 session.
 
+ansible-test reads only `tests/sanity/ignore-<version>.txt` for the version it
+runs, so when antsibull-nox adds a new ansible-core to the matrix, a collection
+with sanity ignores needs a copy for it (with its `.license` sidecar). The Nox
+workflow fails, naming the file to copy, when the newest version in the matrix
+has no ignore file but the version before it has one. Copy it only if its
+entries still apply; delete any the new version no longer needs.
+
 ## Required checks
 
 Branch protection requires these five, and nothing else:
