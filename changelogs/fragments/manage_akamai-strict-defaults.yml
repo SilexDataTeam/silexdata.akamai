@@ -23,3 +23,5 @@ removed_features:
   - >-
     The deprecated ``silexdata.akamai.akamai`` module name, renamed to ``silexdata.akamai.manage_akamai`` in 1.1.0, is
     removed. Tasks that still use it fail with a message naming the new module.
+trivial:
+  - Add an upgrade table for 2.0.0 to ``docs/manage_akamai_module.md``.
