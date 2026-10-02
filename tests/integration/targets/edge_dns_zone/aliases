@@ -1,0 +1,3 @@
+# Runs offline as a dry run: argument validation and check-mode support.
+# Live tests run only when setup_akamai finds the service (and, for those
+# that change zones, when setup_akamai_changes_enabled is true).
