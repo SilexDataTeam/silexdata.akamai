@@ -49,3 +49,7 @@ deprecated_features:
     manage_akamai - without ``status_code``, an HTTP status of 400 or above other than 400, 401 and 404 is still
     treated as success, now with a deprecation warning. From 2.0.0 every status of 400 or above will fail unless it is
     listed in ``status_code`` (https://github.com/SilexDataTeam/silexdata.akamai/issues/10).
+trivial:
+  - >-
+    Rewrite ``docs/manage_akamai_module.md`` for the 1.2.0 options, and drop its outdated Python 2.7 requirements and
+    "POST only" notes.
