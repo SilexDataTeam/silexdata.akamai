@@ -1,0 +1,60 @@
+---
+# Validation that happens before any request is sent, so these run without a
+# live service. Each checks the message, so failing to connect is not a pass.
+
+- name: Expected-failures | Fails without rdata when present
+  silexdata.akamai.edge_dns_recordset:
+    zone: example.org
+    name: www.example.org
+    type: A
+    ttl: 300
+    edge_auth: "{{ edge_dns_recordset_edge_auth }}"
+  register: edge_dns_recordset_no_rdata
+  ignore_errors: true
+
+- name: Expected-failures | Fails with empty rdata when present
+  silexdata.akamai.edge_dns_recordset:
+    zone: example.org
+    name: www.example.org
+    type: A
+    ttl: 300
+    rdata: []
+    edge_auth: "{{ edge_dns_recordset_edge_auth }}"
+  register: edge_dns_recordset_empty_rdata
+  ignore_errors: true
+
+- name: Expected-failures | Fails without a type
+  silexdata.akamai.edge_dns_recordset:
+    zone: example.org
+    name: www.example.org
+    state: absent
+    edge_auth: "{{ edge_dns_recordset_edge_auth }}"
+  register: edge_dns_recordset_no_type
+  ignore_errors: true
+
+- name: Expected-failures | Fails on a state outside its choices
+  silexdata.akamai.edge_dns_recordset:
+    zone: example.org
+    name: www.example.org
+    type: A
+    state: replaced
+    edge_auth: "{{ edge_dns_recordset_edge_auth }}"
+  register: edge_dns_recordset_bad_state
+  ignore_errors: true
+
+- name: Expected-failures | Assert each invalid call was rejected before any request
+  ansible.builtin.assert:
+    that:
+      - edge_dns_recordset_no_rdata is failed
+      - "'state is present but all of the following are missing: rdata' in edge_dns_recordset_no_rdata.msg"
+      - edge_dns_recordset_empty_rdata is failed
+      - edge_dns_recordset_empty_rdata.msg is search('^rdata must hold at least one record')
+      - edge_dns_recordset_no_type is failed
+      - "'missing required arguments: type' in edge_dns_recordset_no_type.msg"
+      - edge_dns_recordset_bad_state is failed
+      - "'value of state must be one of' in edge_dns_recordset_bad_state.msg"
+    fail_msg: >-
+      An invalid call was not rejected as expected:
+      {{ [edge_dns_recordset_no_rdata, edge_dns_recordset_empty_rdata, edge_dns_recordset_no_type, edge_dns_recordset_bad_state]
+         | map(attribute='msg') | list }}
+    success_msg: "Each invalid call was rejected before any request was sent."

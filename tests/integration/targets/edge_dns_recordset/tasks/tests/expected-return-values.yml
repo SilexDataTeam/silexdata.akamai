@@ -1,0 +1,104 @@
+---
+# Live tests that create, update and delete record sets in the disposable test
+# zone, which they create first and delete afterwards. They run only when
+# setup_akamai_changes_enabled is true.
+
+- name: Expected-return-values | Record set lifecycle
+  when: edge_dns_recordset_changes_enabled | bool
+  block:
+    - name: Expected-return-values | Create the test zone
+      silexdata.akamai.edge_dns_zone:
+        zone: "{{ edge_dns_recordset_test_zone }}"
+        contract_id: "{{ edge_dns_recordset_contract_id }}"
+        group_id: "{{ edge_dns_recordset_group_id }}"
+        edge_auth: "{{ edge_dns_recordset_edge_auth }}"
+        max_retries: 3
+
+    - name: Expected-return-values | Create record sets of several types
+      silexdata.akamai.edge_dns_recordset:
+        zone: "{{ edge_dns_recordset_test_zone }}"
+        name: "{{ item.name }}.{{ edge_dns_recordset_test_zone }}"
+        type: "{{ item.type }}"
+        ttl: 300
+        rdata: "{{ item.rdata }}"
+        edge_auth: "{{ edge_dns_recordset_edge_auth }}"
+        max_retries: 3
+      loop: &edge_dns_recordset_records
+        - {name: www, type: A, rdata: [192.0.2.10, 192.0.2.11]}
+        - {name: www, type: AAAA, rdata: ["2001:DB8:0:0:0:0:0:10"]}
+        - {name: alias, type: CNAME, rdata: ["Www.{{ edge_dns_recordset_test_zone }}."]}
+        - {name: mail, type: MX, rdata: ["10 Mail.{{ edge_dns_recordset_test_zone }}."]}
+        - {name: spf, type: TXT, rdata: ["v=spf1 -all"]}
+      loop_control:
+        label: "{{ item.name }} {{ item.type }}"
+      register: edge_dns_recordset_create
+
+    - name: Expected-return-values | Create them again, in Edge DNS's normalized form or another order
+      silexdata.akamai.edge_dns_recordset:
+        zone: "{{ edge_dns_recordset_test_zone }}"
+        name: "{{ item.name }}.{{ edge_dns_recordset_test_zone }}"
+        type: "{{ item.type }}"
+        ttl: 300
+        rdata: "{{ item.rdata | reverse | list }}"
+        edge_auth: "{{ edge_dns_recordset_edge_auth }}"
+        max_retries: 3
+      loop: *edge_dns_recordset_records
+      loop_control:
+        label: "{{ item.name }} {{ item.type }}"
+      register: edge_dns_recordset_create_again
+
+    - name: Expected-return-values | Change the TTL of one record set
+      silexdata.akamai.edge_dns_recordset:
+        zone: "{{ edge_dns_recordset_test_zone }}"
+        name: "www.{{ edge_dns_recordset_test_zone }}"
+        type: A
+        ttl: 600
+        rdata: [192.0.2.10, 192.0.2.11]
+        edge_auth: "{{ edge_dns_recordset_edge_auth }}"
+        max_retries: 3
+      diff: true
+      register: edge_dns_recordset_update
+
+    - name: Expected-return-values | Delete one record set
+      silexdata.akamai.edge_dns_recordset:
+        zone: "{{ edge_dns_recordset_test_zone }}"
+        name: "spf.{{ edge_dns_recordset_test_zone }}"
+        type: TXT
+        state: absent
+        edge_auth: "{{ edge_dns_recordset_edge_auth }}"
+        max_retries: 3
+      register: edge_dns_recordset_delete
+
+    - name: Expected-return-values | Delete it again
+      silexdata.akamai.edge_dns_recordset:
+        zone: "{{ edge_dns_recordset_test_zone }}"
+        name: "spf.{{ edge_dns_recordset_test_zone }}"
+        type: TXT
+        state: absent
+        edge_auth: "{{ edge_dns_recordset_edge_auth }}"
+      register: edge_dns_recordset_delete_again
+
+    - name: Expected-return-values | Assert creation, idempotency, updates and deletion
+      ansible.builtin.assert:
+        that:
+          - edge_dns_recordset_create.results | select('changed') | list | length == 5
+          - edge_dns_recordset_create_again.results | select('changed') | list | length == 0
+          - edge_dns_recordset_update is changed
+          - edge_dns_recordset_update.recordset.ttl == 600
+          - edge_dns_recordset_update.diff.before.ttl == 300
+          - edge_dns_recordset_delete is changed
+          - edge_dns_recordset_delete.recordset == {}
+          - edge_dns_recordset_delete_again is not changed
+        fail_msg: >-
+          Unexpected record set result:
+          {{ [edge_dns_recordset_create, edge_dns_recordset_create_again, edge_dns_recordset_update,
+              edge_dns_recordset_delete, edge_dns_recordset_delete_again] }}
+        success_msg: "Record sets were created once, updated and deleted."
+  always:
+    - name: Expected-return-values | Delete the test zone
+      silexdata.akamai.edge_dns_zone:
+        zone: "{{ edge_dns_recordset_test_zone }}"
+        state: absent
+        bypass_safety_checks: true
+        edge_auth: "{{ edge_dns_recordset_edge_auth }}"
+        max_retries: 3
