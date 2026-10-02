@@ -15,3 +15,31 @@ bugfixes:
   - >-
     manage_akamai - fail with a message naming the method and URL when the request cannot be sent at all, for example
     because the host does not resolve, instead of failing with a traceback.
+minor_changes:
+  - >-
+    manage_akamai - accept a dictionary or list in ``body`` and send it as JSON, and accept JSON text in a string
+    ``body`` (https://github.com/SilexDataTeam/silexdata.akamai/issues/10).
+  - >-
+    manage_akamai - add the ``src`` option to send the body from a file, and the ``body_format`` option, whose ``raw``
+    value sends the body unchanged, for example a ``text/dns`` zone file
+    (https://github.com/SilexDataTeam/silexdata.akamai/issues/10).
+  - >-
+    manage_akamai - add the ``status_code`` option, listing the HTTP statuses that succeed; any other status fails the
+    task (https://github.com/SilexDataTeam/silexdata.akamai/issues/10).
+  - manage_akamai - add the ``query`` option for query parameters, such as ``contractId`` and ``gid``.
+  - manage_akamai - add the ``DELETE`` and ``HEAD`` methods.
+  - >-
+    manage_akamai - add the ``account_switch_key`` option, sent as the ``accountSwitchKey`` query parameter. It falls
+    back to the ``AKAMAI_ACCOUNT_KEY`` environment variable, then to ``account_key`` in the ``edge_config`` section.
+  - >-
+    manage_akamai - return the response's ``status``, ``url`` and ``response_headers``, for example ``Location`` and
+    ``ETag`` (https://github.com/SilexDataTeam/silexdata.akamai/issues/10).
+  - manage_akamai - validate the request body in check mode too, so check mode reports a body that would be rejected.
+deprecated_features:
+  - >-
+    manage_akamai - passing the path of a JSON file in ``body`` is deprecated and will be removed in 2.0.0. Use ``src``
+    instead (https://github.com/SilexDataTeam/silexdata.akamai/issues/10).
+  - >-
+    manage_akamai - without ``status_code``, an HTTP status of 400 or above other than 400, 401 and 404 is still
+    treated as success, now with a deprecation warning. From 2.0.0 every status of 400 or above will fail unless it is
+    listed in ``status_code`` (https://github.com/SilexDataTeam/silexdata.akamai/issues/10).

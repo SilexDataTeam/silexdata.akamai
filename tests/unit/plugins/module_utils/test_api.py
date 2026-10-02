@@ -22,7 +22,7 @@ EDGE_AUTH = {
 
 
 def params(**overrides):
-    base = {"section": "default", "edge_config": None, "edge_auth": None}
+    base = {"section": "default", "edge_config": None, "edge_auth": None, "account_switch_key": None}
     base.update(overrides)
     return base
 
@@ -43,7 +43,7 @@ def failing_module():
 
 @patch.object(api, "EdgeGridAuth", create=True)
 def test_open_session_with_edge_auth(mock_auth):
-    session, baseurl = api.open_session(params(edge_auth=EDGE_AUTH))
+    session, baseurl, account_switch_key = api.open_session(params(edge_auth=EDGE_AUTH))
 
     assert baseurl == "https://akab-example.luna.akamaiapis.net"
     mock_auth.assert_called_once_with(
@@ -52,6 +52,7 @@ def test_open_session_with_edge_auth(mock_auth):
         access_token="akab-access-token",
     )
     assert session.auth is mock_auth.return_value
+    assert account_switch_key is None
 
 
 @patch.object(api, "EdgeGridAuth", create=True)
@@ -59,10 +60,10 @@ def test_open_session_with_edge_auth(mock_auth):
 def test_open_session_with_edge_config(mock_edgerc_cls, mock_auth):
     mock_edgerc_cls.return_value.get.return_value = "akab-from-edgerc.luna.akamaiapis.net"
 
-    session, baseurl = api.open_session(params(edge_config="/fake/.edgerc", section="dns"))
+    session, baseurl = api.open_session(params(edge_config="/fake/.edgerc", section="dns"))[:2]
 
     mock_edgerc_cls.assert_called_once_with("/fake/.edgerc")
-    mock_edgerc_cls.return_value.get.assert_called_once_with("dns", "host")
+    mock_edgerc_cls.return_value.get.assert_any_call("dns", "host")
     mock_auth.from_edgerc.assert_called_once_with(mock_edgerc_cls.return_value, "dns")
     assert baseurl == "https://akab-from-edgerc.luna.akamaiapis.net"
     assert session.auth is mock_auth.from_edgerc.return_value
@@ -136,3 +137,57 @@ def test_client_wraps_transport_errors(_mock_auth):
 
     with pytest.raises(api.AkamaiRequestError, match="^GET https://akab-example.luna.akamaiapis.net/x failed: timed out$"):
         client.request("GET", "/x")
+
+
+def write_edgerc(tmp_path, extra=""):
+    edgerc = tmp_path / ".edgerc"
+    edgerc.write_text("[default]\nhost = akab-example.luna.akamaiapis.net\nclient_token = a\nclient_secret = b\naccess_token = c\n" + extra)
+    return str(edgerc)
+
+
+@pytest.mark.parametrize(
+    ("option", "edgerc_line", "expected"),
+    [
+        (None, "", None),
+        (None, "account_key = 1-FROMRC\n", "1-FROMRC"),
+        (None, "account-key = 1-FROMRC\n", "1-FROMRC"),
+        ("1-OPTION", "account_key = 1-FROMRC\n", "1-OPTION"),
+    ],
+)
+def test_account_switch_key_option_wins_over_edgerc(tmp_path, option, edgerc_line, expected):
+    edgerc = write_edgerc(tmp_path, edgerc_line)
+    account_switch_key = api.open_session(params(edge_config=edgerc, account_switch_key=option))[2]
+    assert account_switch_key == expected
+
+
+@patch.object(api, "EdgeGridAuth", create=True)
+def test_account_switch_key_is_sent_as_a_query_parameter(_mock_auth):
+    client = api.AkamaiClient(params(edge_auth=EDGE_AUTH, account_switch_key="1-ABC"))
+    client.session = MagicMock()
+
+    client.request("GET", "/papi/v1/contracts", params={"page": 1})
+
+    assert client.session.request.call_args[1]["params"] == {"page": 1, "accountSwitchKey": "1-ABC"}
+
+
+@pytest.mark.parametrize(
+    ("endpoint", "query"),
+    [("/papi/v1/contracts", {"accountSwitchKey": "1-MINE"}), ("/papi/v1/contracts?accountSwitchKey=1-MINE", None)],
+)
+@patch.object(api, "EdgeGridAuth", create=True)
+def test_an_explicit_accountswitchkey_is_not_overridden(_mock_auth, endpoint, query):
+    client = api.AkamaiClient(params(edge_auth=EDGE_AUTH, account_switch_key="1-ABC"))
+    client.session = MagicMock()
+
+    client.request("GET", endpoint, params=query)
+
+    assert client.session.request.call_args[1].get("params") == query
+
+
+def test_account_switch_key_falls_back_to_the_environment(monkeypatch):
+    from ansible.module_utils.basic import env_fallback
+
+    monkeypatch.setenv("AKAMAI_ACCOUNT_KEY", "1-ENV")
+    fallback, args = api.AUTH_ARGUMENT_SPEC["account_switch_key"]["fallback"]
+    assert fallback is env_fallback
+    assert fallback(*args) == "1-ENV"

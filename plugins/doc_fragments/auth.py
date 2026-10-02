@@ -48,6 +48,17 @@ options:
         description: EdgeGrid access token.
         required: true
         type: str
+  account_switch_key:
+    description:
+      - Account switch key, for an API client that manages more than one account (for example a partner or Akamai
+        internal client). It is sent as the C(accountSwitchKey) query parameter on every request, unless the request
+        already sets that parameter.
+      - If not set, the E(AKAMAI_ACCOUNT_KEY) environment variable is used, then C(account_key) in the O(edge_config)
+        section, as Akamai's EdgeGrid documentation describes.
+      - A few Akamai APIs do not accept C(accountSwitchKey). Leave this unset for those.
+    required: false
+    type: str
+    version_added: 1.2.0
 requirements:
   - requests
   - edgegrid-python

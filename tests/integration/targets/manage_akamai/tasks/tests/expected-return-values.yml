@@ -13,6 +13,7 @@
         method: GET
         endpoint: "{{ manage_akamai_endpoint }}"
         edge_auth: "{{ manage_akamai_edge_auth }}"
+        status_code: [200]
       register: manage_akamai_siteshield
 
     - name: Expected-return-values | Assert the response shape
@@ -21,5 +22,8 @@
           - manage_akamai_siteshield is not failed
           - manage_akamai_siteshield is not changed
           - manage_akamai_siteshield.msg is defined
+          - manage_akamai_siteshield.status == 200
+          - manage_akamai_siteshield.url is search(manage_akamai_endpoint ~ '$')
+          - manage_akamai_siteshield.response_headers is mapping
         fail_msg: "Unexpected response from Akamai API: {{ manage_akamai_siteshield }}"
         success_msg: "Akamai API returned the expected response shape."

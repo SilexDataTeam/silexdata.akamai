@@ -12,7 +12,7 @@ __metaclass__ = type
 import traceback
 from urllib.parse import urljoin
 
-from ansible.module_utils.basic import missing_required_lib
+from ansible.module_utils.basic import env_fallback, missing_required_lib
 
 REQUESTS_IMP_ERR = None
 try:
@@ -47,6 +47,13 @@ AUTH_ARGUMENT_SPEC = {
             "access_token": {"required": True, "type": "str", "no_log": True},
         },
     },
+    # An account ID, not a credential.
+    "account_switch_key": {
+        "required": False,
+        "type": "str",
+        "no_log": False,
+        "fallback": (env_fallback, ["AKAMAI_ACCOUNT_KEY"]),
+    },
 }
 
 AUTH_MUTUALLY_EXCLUSIVE = [("edge_config", "edge_auth")]
@@ -63,14 +70,23 @@ def check_requirements(module):
 
 
 def open_session(params):
-    """Return an EdgeGrid-signed requests session and the API base URL."""
+    """Return an EdgeGrid-signed requests session, the API base URL and the account switch key.
+
+    The account switch key is the account_switch_key option (or the
+    AKAMAI_ACCOUNT_KEY environment variable), falling back to the edgerc
+    section's account_key, as Akamai's EdgeGrid documentation describes.
+    The EdgeGrid library itself never reads account_key.
+    """
     session = requests.Session()
+    account_switch_key = params.get("account_switch_key")
 
     if params["edge_config"]:
         edgerc = EdgeRc(params["edge_config"])
         section = params["section"]
         baseurl = f"https://{edgerc.get(section, 'host')}"
         session.auth = EdgeGridAuth.from_edgerc(edgerc, section)
+        if not account_switch_key:
+            account_switch_key = edgerc.get(section, "account_key", fallback=None)
 
     if params["edge_auth"]:
         baseurl = f"https://{params['edge_auth']['host']}"
@@ -80,7 +96,7 @@ def open_session(params):
             access_token=params["edge_auth"]['access_token'],
         )
 
-    return session, baseurl
+    return session, baseurl, account_switch_key or None
 
 
 class AkamaiRequestError(Exception):
@@ -91,11 +107,19 @@ class AkamaiClient:
     """Send EdgeGrid-signed requests to one Akamai API host."""
 
     def __init__(self, params):
-        self.session, self.baseurl = open_session(params)
+        self.session, self.baseurl, self.account_switch_key = open_session(params)
 
-    def request(self, method, endpoint, **kwargs):
-        """Send one request; keyword arguments go to requests.Session.request."""
+    def request(self, method, endpoint, params=None, **kwargs):
+        """Send one request; keyword arguments go to requests.Session.request.
+
+        The account switch key is added as the accountSwitchKey query
+        parameter unless the caller already set one.
+        """
         url = urljoin(self.baseurl, endpoint)
+        if self.account_switch_key and "accountSwitchKey" not in (params or {}) and "accountSwitchKey=" not in endpoint:
+            params = dict(params or {}, accountSwitchKey=self.account_switch_key)
+        if params is not None:
+            kwargs["params"] = params
         try:
             return self.session.request(method, url, **kwargs)
         except requests.exceptions.RequestException as exc:
