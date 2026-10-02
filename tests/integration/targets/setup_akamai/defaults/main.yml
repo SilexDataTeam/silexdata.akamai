@@ -20,3 +20,12 @@ setup_akamai_require_service: false
 
 # Seconds to wait when probing the API endpoint for availability.
 setup_akamai_service_probe_timeout: 5
+
+# Live tests that create and delete Edge DNS zones and record sets run only
+# when the service is available AND all of these are set. The zone must be
+# disposable: the tests create it, change it and delete it. Leave
+# setup_akamai_allow_changes false to run only the read-only live tests.
+setup_akamai_allow_changes: false
+setup_akamai_test_zone: ""
+setup_akamai_contract_id: ""
+setup_akamai_group_id: ""

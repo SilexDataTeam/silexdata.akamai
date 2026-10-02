@@ -112,3 +112,7 @@ setup_akamai_client_secret = "AKAMAI_CLIENT_SECRET"
 setup_akamai_access_token = "AKAMAI_ACCESS_TOKEN"
 # Set to "true" in CI to fail instead of skipping when the service is down.
 setup_akamai_require_service = "AKAMAI_REQUIRE_SERVICE"
+setup_akamai_allow_changes = "AKAMAI_ALLOW_CHANGES"
+setup_akamai_test_zone = "AKAMAI_TEST_ZONE"
+setup_akamai_contract_id = "AKAMAI_CONTRACT_ID"
+setup_akamai_group_id = "AKAMAI_GROUP_ID"

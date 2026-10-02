@@ -2,7 +2,9 @@
 # Setup role for the silexdata.akamai integration tests.
 #
 # Responsibilities:
-#   1. Initialize the shared setup_akamai_* variables.
+#   1. Initialize the shared setup_akamai_* variables, including
+#      setup_akamai_changes_enabled, which gates the live tests that create
+#      and delete Edge DNS zones.
 #   2. Probe the Akamai API for availability and record
 #      setup_akamai_service_available so service-dependent ("live") tests can be
 #      skipped when the service is down.
@@ -30,6 +32,15 @@
 - name: Record whether the Akamai service is available
   ansible.builtin.set_fact:
     setup_akamai_service_available: "{{ setup_akamai_probe is succeeded }}"
+
+- name: Record whether live tests may create and delete Edge DNS zones
+  ansible.builtin.set_fact:
+    setup_akamai_changes_enabled: >-
+      {{ (setup_akamai_service_available | bool)
+         and (setup_akamai_allow_changes | bool)
+         and (setup_akamai_test_zone | length > 0)
+         and (setup_akamai_contract_id | length > 0)
+         and (setup_akamai_group_id | string | length > 0) }}
 
 - name: Fail because the Akamai service is unavailable and is required
   ansible.builtin.fail:

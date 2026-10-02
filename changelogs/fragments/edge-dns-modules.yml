@@ -1,3 +1,7 @@
 ---
 trivial:
+  - >-
+    Integration tests - add ``setup_akamai_allow_changes``, ``setup_akamai_test_zone``, ``setup_akamai_contract_id`` and
+    ``setup_akamai_group_id``. Together with a reachable service they enable the live tests that create and delete a
+    disposable Edge DNS zone.
   - Add the GPL-3.0-or-later and BSD-2-Clause license texts under ``LICENSES/`` for the new modules and module utils.
