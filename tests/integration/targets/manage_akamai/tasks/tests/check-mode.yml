@@ -63,7 +63,7 @@
     suffix: .json
   register: manage_akamai_check_mode_body_file
 
-- name: Check-mode | Send the body file through src and through the deprecated body path
+- name: Check-mode | Send a body file through src
   block:
     - name: Check-mode | Write the body file
       ansible.builtin.copy:
@@ -80,24 +80,13 @@
       check_mode: true
       register: manage_akamai_check_mode_src
 
-    - name: Check-mode | POST the file as a path in body
-      silexdata.akamai.manage_akamai:
-        method: POST
-        endpoint: "{{ manage_akamai_endpoint }}"
-        body: "{{ manage_akamai_check_mode_body_file.path }}"
-        edge_auth: "{{ manage_akamai_edge_auth }}"
-      check_mode: true
-      register: manage_akamai_check_mode_body_path
-
-    - name: Check-mode | Assert both forms work and only the path in body is deprecated
+    - name: Check-mode | Assert the src file was read and a change predicted
       ansible.builtin.assert:
         that:
           - manage_akamai_check_mode_src is changed
           - manage_akamai_check_mode_src.deprecations | default([]) | length == 0
-          - manage_akamai_check_mode_body_path is changed
-          - manage_akamai_check_mode_body_path.deprecations | map(attribute='msg') | select('search', 'Use src instead') | list | length == 1
-        fail_msg: "Unexpected result for a body file: {{ [manage_akamai_check_mode_src, manage_akamai_check_mode_body_path] }}"
-        success_msg: "src and the deprecated path in body both work; only the latter is deprecated."
+        fail_msg: "Unexpected result for a src file: {{ manage_akamai_check_mode_src }}"
+        success_msg: "A body file sent through src works in check mode."
   always:
     - name: Check-mode | Remove the body file
       ansible.builtin.file:

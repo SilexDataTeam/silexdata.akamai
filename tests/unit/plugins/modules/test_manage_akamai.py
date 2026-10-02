@@ -6,6 +6,7 @@ from __future__ import absolute_import, division, print_function
 __metaclass__ = type
 
 import json
+from http import HTTPStatus
 from unittest.mock import MagicMock
 
 import pytest
@@ -73,6 +74,7 @@ def fake_response(status, body=None, text=None, content_type="application/json",
     """Build a real requests.Response, as the API would return it."""
     response = requests.models.Response()
     response.status_code = status
+    response.reason = HTTPStatus(status).phrase
     response.url = url or BASE_URL + "/test"
     if body is not None:
         response._content = json.dumps(body).encode()
@@ -120,14 +122,6 @@ def sent(session):
     return args[0], args[1], kwargs
 
 
-def test_get_request_file_reads_json(tmp_path):
-    payload = {"productId": "prd_Alta", "propertyName": "my.new.property.com"}
-    body_file = tmp_path / "body.json"
-    body_file.write_text(json.dumps(payload))
-
-    assert manage_akamai.get_request_file(str(body_file)) == payload
-
-
 def test_requires_one_of_edge_config_or_edge_auth():
     """Neither edge_config nor edge_auth -> module must fail."""
     set_module_args({"endpoint": "/siteshield/v1/maps", "method": "GET"})
@@ -172,6 +166,8 @@ def test_get_success(session):
     assert not failed
     assert result["changed"] is False
     assert result["msg"] == {"siteShieldMaps": []}
+    assert result["response_body"] == {"siteShieldMaps": []}
+    assert "deprecations" not in result
     assert sent(session)[:2] == ("GET", BASE_URL + "/siteshield/v1/maps")
 
 
@@ -187,28 +183,18 @@ def test_get_with_edge_config(session):
     assert sent(session)[1] == "https://akab-from-edgerc.luna.akamaiapis.net/test"
 
 
-@pytest.mark.parametrize("status", [400, 401, 404])
-def test_error_status_fails_with_the_error_body(session, status):
-    session.request.return_value = fake_response(status, {"detail": "nope"}, content_type="application/problem+json")
+@pytest.mark.parametrize("status", [400, 401, 403, 404, 409, 412, 415, 422, 429, 500, 503])
+def test_every_status_of_400_or_above_fails_without_status_code(session, status):
+    problem = {"type": "https://problems.example/x", "title": "Something went wrong", "status": status}
+    session.request.return_value = fake_response(status, problem, content_type="application/problem+json")
 
-    failed, result = run_module({"endpoint": "/test", "method": "GET"})
+    failed, result = run_module({"endpoint": "/test", "method": "POST"})
 
     assert failed
-    assert result["msg"] == {"detail": "nope"}
-
-
-def test_post_with_body_file(session, tmp_path):
-    payload = {"key": "value"}
-    body_file = tmp_path / "body.json"
-    body_file.write_text(json.dumps(payload))
-    session.request.return_value = fake_response(201, {"created": True})
-
-    failed, result = run_module({"endpoint": "/test/resource", "method": "POST", "body": str(body_file)})
-
-    assert not failed
-    assert result["changed"] is True
-    assert result["msg"] == {"created": True}
-    assert sent(session)[2]["json"] == payload
+    assert result["msg"] == f"HTTP {status} {HTTPStatus(status).phrase}: Something went wrong"
+    assert result["response_body"] == problem
+    assert result["status"] == status
+    assert "changed" not in result
 
 
 @pytest.mark.parametrize("method", ["POST", "PUT"])
@@ -239,8 +225,9 @@ def test_invalid_json_is_returned_as_text_instead_of_crashing(session):
 
     failed, result = run_module({"endpoint": "/test", "method": "GET"})
 
-    assert not failed
-    assert result["msg"] == "<html>Bad Gateway</html>"
+    assert failed
+    assert result["msg"] == "HTTP 502 Bad Gateway: <html>Bad Gateway</html>"
+    assert result["response_body"] == "<html>Bad Gateway</html>"
 
 
 def test_json_without_a_content_type_is_still_parsed(session):
@@ -313,14 +300,23 @@ def test_success_returns_status_url_and_response_headers(session):
     assert sent(session)[2]["params"] == {"contractId": "1-ABC", "gid": 123}
 
 
-def test_failure_returns_status_too(session):
-    session.request.return_value = fake_response(404, {"title": "Not Found"}, content_type="application/problem+json")
+def test_failure_message_includes_detail_and_errors(session):
+    problem = {
+        "title": "Invalid record set",
+        "detail": "The record set www.example.org A is invalid",
+        "errors": [{"detail": "rdata 300.1.1.1 is not an IPv4 address"}, {"title": "ttl out of range"}],
+    }
+    session.request.return_value = fake_response(422, problem, content_type="application/problem+json")
 
-    failed, result = run_module({"endpoint": "/test", "method": "GET"})
+    failed, result = run_module({"endpoint": "/test", "method": "POST"})
 
     assert failed
-    assert result["status"] == 404
-    assert result["msg"] == {"title": "Not Found"}
+    # The reason phrase is "Unprocessable Entity" before Python 3.13 and "Unprocessable Content" from it.
+    assert result["msg"] == (
+        f"HTTP 422 {HTTPStatus(422).phrase}: Invalid record set: The record set www.example.org A is invalid: "
+        "rdata 300.1.1.1 is not an IPv4 address; ttl out of range"
+    )
+    assert result["response_body"] == problem
 
 
 @pytest.mark.parametrize("method", ["DELETE", "HEAD"])
@@ -348,25 +344,18 @@ def test_inline_json_body(session, body):
     assert kwargs["headers"] == {"content-type": "application/json"}
 
 
-def test_a_file_path_in_body_still_works_but_is_deprecated(session, tmp_path):
-    body_file = tmp_path / "body.json"
-    body_file.write_text('{"zone": "example.org"}')
-    session.request.return_value = fake_response(201, {})
+@pytest.mark.parametrize("existing_file", [False, True])
+def test_a_string_body_that_is_not_json_fails_before_sending(session, tmp_path, existing_file):
+    # Before 2.0.0 a string naming an existing file was read as a JSON file.
+    path = tmp_path / "body.json"
+    if existing_file:
+        path.write_text('{"zone": "example.org"}')
 
-    failed, result = run_module({"endpoint": "/test", "method": "POST", "body": str(body_file)})
-
-    assert not failed
-    assert sent(session)[2]["json"] == {"zone": "example.org"}
-    [deprecation] = result["deprecations"]
-    assert "Use src instead" in deprecation["msg"]
-    assert (deprecation["version"], deprecation["collection_name"]) == ("2.0.0", "silexdata.akamai")
-
-
-def test_a_string_body_that_is_neither_json_nor_a_file_fails_before_sending(session):
-    failed, result = run_module({"endpoint": "/test", "method": "POST", "body": "/no/such/file.json"})
+    failed, result = run_module({"endpoint": "/test", "method": "POST", "body": str(path)})
 
     assert failed
-    assert "neither valid JSON nor the path of an existing file" in result["msg"]
+    assert result["msg"].startswith("body is a string that is not valid JSON")
+    assert result["msg"].endswith("To send a file, use src.")
     session.request.assert_not_called()
 
 
@@ -443,25 +432,6 @@ def test_body_and_src_are_mutually_exclusive(session, tmp_path):
 
     assert failed
     assert "mutually exclusive" in result["msg"]
-
-
-@pytest.mark.parametrize("status", [403, 409, 412, 415, 422, 429, 500, 503])
-def test_without_status_code_other_errors_still_succeed_but_are_deprecated(session, status):
-    session.request.return_value = fake_response(status, {"title": "error"}, content_type="application/problem+json")
-
-    failed, result = run_module({"endpoint": "/test", "method": "POST"})
-
-    assert not failed
-    assert result["status"] == status
-    assert any(f"HTTP {status} was treated as success" in d["msg"] for d in result["deprecations"])
-
-
-def test_successful_statuses_are_not_deprecated(session):
-    session.request.return_value = fake_response(200, {})
-
-    result = run_module({"endpoint": "/test", "method": "GET"})[1]
-
-    assert "deprecations" not in result
 
 
 @pytest.mark.parametrize(

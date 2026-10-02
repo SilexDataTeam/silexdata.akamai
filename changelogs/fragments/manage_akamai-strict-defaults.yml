@@ -1,0 +1,21 @@
+---
+release_summary: >-
+  This major release makes the ``manage_akamai`` behaviour deprecated in 1.2.0 take effect, and removes the
+  ``silexdata.akamai.akamai`` module name.
+breaking_changes:
+  - >-
+    manage_akamai - every HTTP status of 400 or above now fails the task unless it is listed in ``status_code``.
+    Before, only 400, 401 and 404 failed when ``status_code`` was not set. To accept an expected error, list it, for
+    example ``status_code: [201, 409]`` (https://github.com/SilexDataTeam/silexdata.akamai/issues/10).
+  - >-
+    manage_akamai - a string ``body`` is always the body itself: JSON text with ``body_format=json``, or sent unchanged
+    with ``body_format=raw``. It is no longer read as the path of a JSON file when such a file exists; use ``src``
+    instead (https://github.com/SilexDataTeam/silexdata.akamai/issues/10).
+  - >-
+    manage_akamai - on failure, ``msg`` is now a one-line description of the error built from the response's problem
+    details, such as ``HTTP 409 Conflict: Zone already exists``. The error body itself is in the new
+    ``response_body`` return value. Tasks that read fields of a failed task's ``msg`` should read ``response_body``.
+minor_changes:
+  - >-
+    manage_akamai - return the response body in ``response_body`` on success and on failure. ``msg`` still holds it on
+    success.
