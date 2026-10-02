@@ -140,6 +140,15 @@ class AkamaiRequestError(Exception):
     """The request never produced an HTTP response (DNS, TLS, connection...)."""
 
 
+class AkamaiApiError(Exception):
+    """The API answered with a status the caller did not expect."""
+
+    def __init__(self, message, status, body):
+        super().__init__(message)
+        self.status = status
+        self.body = body
+
+
 class AkamaiClient:
     """Send EdgeGrid-signed requests to one Akamai API host, retrying where asked."""
 
@@ -181,6 +190,18 @@ class AkamaiClient:
             if retry == self.max_retries or response.status_code not in self.retry_on_status:
                 return response
             self._sleep(self.retry_wait(retry, response))
+
+    def call(self, method, endpoint, expect=(200,), **kwargs):
+        """Send a request and return (status, parsed body).
+
+        Raises AkamaiApiError, described by describe_failure, for any status
+        not in expect.
+        """
+        response = self.request(method, endpoint, **kwargs)
+        body = parse_response_body(response)
+        if response.status_code not in expect:
+            raise AkamaiApiError(f"{method} {endpoint}: {describe_failure(response, body)}", response.status_code, body)
+        return response.status_code, body
 
 
 def merge_headers(defaults, extra):

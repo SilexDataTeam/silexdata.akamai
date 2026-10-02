@@ -1,0 +1,25 @@
+---
+# Validation that happens before any request is sent, so these run without a
+# live service. Each checks the message, so failing to connect is not a pass.
+
+- name: Expected-failures | Fails on a zone type outside its choices
+  silexdata.akamai.edge_dns_zone_info:
+    types: [FORWARD]
+    edge_auth: "{{ edge_dns_zone_info_edge_auth }}"
+  register: edge_dns_zone_info_bad_type
+  ignore_errors: true
+
+- name: Expected-failures | Fails without credentials
+  silexdata.akamai.edge_dns_zone_info:
+  register: edge_dns_zone_info_no_auth
+  ignore_errors: true
+
+- name: Expected-failures | Assert each invalid call was rejected before any request
+  ansible.builtin.assert:
+    that:
+      - edge_dns_zone_info_bad_type is failed
+      - "'value of types must be one or more of' in edge_dns_zone_info_bad_type.msg"
+      - edge_dns_zone_info_no_auth is failed
+      - "'one of the following is required: edge_config, edge_auth' in edge_dns_zone_info_no_auth.msg"
+    fail_msg: "An invalid call was not rejected as expected: {{ [edge_dns_zone_info_bad_type.msg, edge_dns_zone_info_no_auth.msg] }}"
+    success_msg: "Each invalid call was rejected before any request was sent."

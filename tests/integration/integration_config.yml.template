@@ -15,3 +15,12 @@ setup_akamai_access_token: "akab-xxxxxxxxxxxxxxxx-xxxxxxxxxxxxxxxx"
 
 # Optional: override the read-only endpoint used by the live tests.
 # setup_akamai_test_endpoint: "/siteshield/v1/maps"
+
+# Optional: let the live tests create, change and delete Edge DNS zones and
+# record sets. setup_akamai_test_zone must be a disposable zone name that
+# does not exist yet; the tests create it in this contract and group and
+# delete it again.
+# setup_akamai_allow_changes: true
+# setup_akamai_test_zone: "ansible-test.example.org"
+# setup_akamai_contract_id: "1-ABCDE"
+# setup_akamai_group_id: "12345"

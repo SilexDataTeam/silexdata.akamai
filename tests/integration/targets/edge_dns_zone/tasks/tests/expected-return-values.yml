@@ -1,0 +1,83 @@
+---
+# Live tests that create, update and delete the disposable test zone. They run
+# only when setup_akamai_changes_enabled is true.
+
+- name: Expected-return-values | Zone lifecycle
+  when: edge_dns_zone_changes_enabled | bool
+  block:
+    - name: Expected-return-values | Create the test zone with default SOA and NS records
+      silexdata.akamai.edge_dns_zone:
+        zone: "{{ edge_dns_zone_test_zone }}"
+        contract_id: "{{ edge_dns_zone_contract_id }}"
+        group_id: "{{ edge_dns_zone_group_id }}"
+        comment: Created by the silexdata.akamai integration tests
+        edge_auth: "{{ edge_dns_zone_edge_auth }}"
+        max_retries: 3
+      register: edge_dns_zone_create
+
+    - name: Expected-return-values | Create it again
+      silexdata.akamai.edge_dns_zone:
+        zone: "{{ edge_dns_zone_test_zone }}"
+        contract_id: "{{ edge_dns_zone_contract_id }}"
+        group_id: "{{ edge_dns_zone_group_id }}"
+        comment: Created by the silexdata.akamai integration tests
+        edge_auth: "{{ edge_dns_zone_edge_auth }}"
+        max_retries: 3
+      register: edge_dns_zone_create_again
+
+    - name: Expected-return-values | Look up the default records
+      silexdata.akamai.edge_dns_recordset_info:
+        zone: "{{ edge_dns_zone_test_zone }}"
+        types: [SOA, NS]
+        edge_auth: "{{ edge_dns_zone_edge_auth }}"
+      register: edge_dns_zone_default_records
+
+    - name: Expected-return-values | Change the comment
+      silexdata.akamai.edge_dns_zone:
+        zone: "{{ edge_dns_zone_test_zone }}"
+        comment: Updated by the silexdata.akamai integration tests
+        edge_auth: "{{ edge_dns_zone_edge_auth }}"
+        max_retries: 3
+      diff: true
+      register: edge_dns_zone_update
+
+    - name: Expected-return-values | Assert creation, idempotency and updates
+      ansible.builtin.assert:
+        that:
+          - edge_dns_zone_create is changed
+          - edge_dns_zone_create.zone.zone == edge_dns_zone_test_zone
+          - edge_dns_zone_create.zone.type == 'PRIMARY'
+          - edge_dns_zone_create_again is not changed
+          - edge_dns_zone_default_records.recordsets | map(attribute='type') | sort | unique | list == ['NS', 'SOA']
+          - edge_dns_zone_update is changed
+          - edge_dns_zone_update.zone.comment == 'Updated by the silexdata.akamai integration tests'
+          - edge_dns_zone_update.diff.before.comment == 'Created by the silexdata.akamai integration tests'
+        fail_msg: >-
+          Unexpected zone lifecycle result:
+          {{ [edge_dns_zone_create, edge_dns_zone_create_again, edge_dns_zone_default_records, edge_dns_zone_update] }}
+        success_msg: "The zone was created once, got its default records, and was updated."
+  always:
+    - name: Expected-return-values | Delete the test zone
+      silexdata.akamai.edge_dns_zone:
+        zone: "{{ edge_dns_zone_test_zone }}"
+        state: absent
+        bypass_safety_checks: true
+        edge_auth: "{{ edge_dns_zone_edge_auth }}"
+        max_retries: 3
+      register: edge_dns_zone_delete
+
+    - name: Expected-return-values | Delete it again
+      silexdata.akamai.edge_dns_zone:
+        zone: "{{ edge_dns_zone_test_zone }}"
+        state: absent
+        edge_auth: "{{ edge_dns_zone_edge_auth }}"
+      register: edge_dns_zone_delete_again
+
+    - name: Expected-return-values | Assert the zone was deleted once
+      ansible.builtin.assert:
+        that:
+          - edge_dns_zone_delete is changed
+          - edge_dns_zone_delete.delete_request_id is defined
+          - edge_dns_zone_delete_again is not changed
+        fail_msg: "Unexpected deletion result: {{ [edge_dns_zone_delete, edge_dns_zone_delete_again] }}"
+        success_msg: "The zone was deleted once."

@@ -1,0 +1,5 @@
+---
+# Run the collection setup role first to initialize variables and probe the
+# Akamai API before exercising the edge_dns_recordset module.
+dependencies:
+  - setup_akamai

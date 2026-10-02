@@ -1,0 +1,9 @@
+---
+# Inherit setup_akamai role outputs into properly prefixed edge_dns_zone_info
+# variables. Tasks in this role reference only the edge_dns_zone_info_* variables.
+edge_dns_zone_info_edge_auth: "{{ setup_akamai_edge_auth }}"
+edge_dns_zone_info_service_available: "{{ setup_akamai_service_available }}"
+edge_dns_zone_info_changes_enabled: "{{ setup_akamai_changes_enabled }}"
+edge_dns_zone_info_test_zone: "{{ setup_akamai_test_zone }}"
+edge_dns_zone_info_contract_id: "{{ setup_akamai_contract_id }}"
+edge_dns_zone_info_group_id: "{{ setup_akamai_group_id }}"

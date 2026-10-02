@@ -5,6 +5,11 @@ EdgeGrid, and returns the response. The full option and return-value
 reference is in the
 [collection documentation](https://silexdatateam.github.io/silexdata.akamai/).
 
+For Edge DNS zones and record sets, prefer the dedicated modules
+`silexdata.akamai.edge_dns_zone` and `silexdata.akamai.edge_dns_recordset`
+(and their `_info` counterparts). They read the current state first and
+change only what differs, so they are safe to run repeatedly.
+
 ## Prerequisites
 
 - Python 3.6 or later on the host that runs the module (usually the

@@ -1,0 +1,47 @@
+---
+# Without a live service the module still has to run in check mode: it reads
+# the current state first, so it fails to connect rather than being skipped.
+- name: Check-mode | Run in check mode
+  silexdata.akamai.edge_dns_zone:
+    zone: example.org
+    edge_auth: "{{ edge_dns_zone_edge_auth }}"
+  check_mode: true
+  register: edge_dns_zone_check_mode_support
+  ignore_errors: true
+
+- name: Check-mode | Assert the module supports check mode
+  ansible.builtin.assert:
+    that:
+      - edge_dns_zone_check_mode_support is not skipped
+      - "(edge_dns_zone_service_available | bool) or (edge_dns_zone_check_mode_support.msg is search('^GET https://.* failed: '))"
+    fail_msg: >-
+      The module did not run in check mode as expected. It must declare
+      supports_check_mode=True: {{ edge_dns_zone_check_mode_support }}
+    success_msg: "The module supports check mode."
+
+- name: Check-mode | Live check-mode tests
+  when: edge_dns_zone_changes_enabled | bool
+  block:
+    - name: Check-mode | Predict creating the test zone
+      silexdata.akamai.edge_dns_zone:
+        zone: "{{ edge_dns_zone_test_zone }}"
+        contract_id: "{{ edge_dns_zone_contract_id }}"
+        group_id: "{{ edge_dns_zone_group_id }}"
+        edge_auth: "{{ edge_dns_zone_edge_auth }}"
+      check_mode: true
+      register: edge_dns_zone_check_mode_create
+
+    - name: Check-mode | Look the test zone up
+      silexdata.akamai.edge_dns_zone_info:
+        zone: "{{ edge_dns_zone_test_zone }}"
+        edge_auth: "{{ edge_dns_zone_edge_auth }}"
+      register: edge_dns_zone_check_mode_lookup
+
+    - name: Check-mode | Assert a change was predicted and nothing was created
+      ansible.builtin.assert:
+        that:
+          - edge_dns_zone_check_mode_create is changed
+          - edge_dns_zone_check_mode_create.zone.zone == edge_dns_zone_test_zone
+          - edge_dns_zone_check_mode_lookup.zones == []
+        fail_msg: "Check mode did not behave as expected: {{ [edge_dns_zone_check_mode_create, edge_dns_zone_check_mode_lookup] }}"
+        success_msg: "Check mode predicted the zone without creating it."

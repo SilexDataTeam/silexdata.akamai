@@ -393,3 +393,28 @@ def test_describe_failure(body, expected):
 
 def test_describe_failure_without_a_reason_phrase():
     assert api.describe_failure(failed_response(599, ""), {"title": "Odd"}) == "HTTP 599: Odd"
+
+
+@patch.object(api, "EdgeGridAuth", create=True)
+def test_call_returns_status_and_body(_mock_auth):
+    client = api.AkamaiClient(params(edge_auth=EDGE_AUTH))
+    client.session = MagicMock()
+    client.session.request.return_value = fake_response(b'{"zone": "example.org"}', "application/json")
+
+    assert client.call("GET", "/config-dns/v2/zones/example.org") == (200, {"zone": "example.org"})
+
+
+@patch.object(api, "EdgeGridAuth", create=True)
+def test_call_raises_on_an_unexpected_status(_mock_auth):
+    client = api.AkamaiClient(params(edge_auth=EDGE_AUTH))
+    client.session = MagicMock()
+    conflict = fake_response(b'{"title": "Zone already exists"}', "application/problem+json")
+    conflict.status_code = 409
+    conflict.reason = "Conflict"
+    client.session.request.return_value = conflict
+
+    with pytest.raises(api.AkamaiApiError) as exc_info:
+        client.call("POST", "/config-dns/v2/zones", expect=(201,))
+    assert str(exc_info.value) == "POST /config-dns/v2/zones: HTTP 409 Conflict: Zone already exists"
+    assert exc_info.value.status == 409
+    assert exc_info.value.body == {"title": "Zone already exists"}
