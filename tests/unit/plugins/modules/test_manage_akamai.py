@@ -16,6 +16,7 @@ else:
 import pytest
 from ansible.module_utils import basic
 from ansible.module_utils.common.text.converters import to_bytes
+from ansible_collections.silexdata.akamai.plugins.module_utils import api
 from ansible_collections.silexdata.akamai.plugins.modules import manage_akamai
 
 
@@ -91,8 +92,8 @@ def test_edge_config_and_edge_auth_are_mutually_exclusive(tmp_path):
         manage_akamai.main()
 
 
-@patch.object(manage_akamai, "EdgeGridAuth", create=True)
-@patch.object(manage_akamai.requests, "Session")
+@patch.object(api, "EdgeGridAuth", create=True)
+@patch.object(api.requests, "Session")
 def test_authenticate_get_success(mock_session_cls, _mock_edgegrid):
     response = MagicMock()
     response.status_code = 200
@@ -120,8 +121,8 @@ def test_authenticate_get_success(mock_session_cls, _mock_edgegrid):
     session.get.assert_called_once()
 
 
-@patch.object(manage_akamai, "EdgeGridAuth", create=True)
-@patch.object(manage_akamai.requests, "Session")
+@patch.object(api, "EdgeGridAuth", create=True)
+@patch.object(api.requests, "Session")
 def test_authenticate_get_error_status(mock_session_cls, _mock_edgegrid):
     response = MagicMock()
     response.status_code = 404
@@ -148,9 +149,9 @@ def test_authenticate_get_error_status(mock_session_cls, _mock_edgegrid):
     assert result == {"detail": "not found"}
 
 
-@patch.object(manage_akamai, "EdgeGridAuth", create=True)
-@patch.object(manage_akamai, "EdgeRc", create=True)
-@patch.object(manage_akamai.requests, "Session")
+@patch.object(api, "EdgeGridAuth", create=True)
+@patch.object(api, "EdgeRc", create=True)
+@patch.object(api.requests, "Session")
 def test_authenticate_get_with_edge_config(mock_session_cls, mock_edgerc_cls, _mock_edgegrid):
     mock_edgerc_instance = MagicMock()
     mock_edgerc_instance.get.return_value = "akab-example.luna.akamaiapis.net"
@@ -182,8 +183,8 @@ def test_authenticate_get_with_edge_config(mock_session_cls, mock_edgerc_cls, _m
     mock_edgerc_cls.assert_called_once_with("/fake/.edgerc")
 
 
-@patch.object(manage_akamai, "EdgeGridAuth", create=True)
-@patch.object(manage_akamai.requests, "Session")
+@patch.object(api, "EdgeGridAuth", create=True)
+@patch.object(api.requests, "Session")
 def test_authenticate_post_with_body(mock_session_cls, _mock_edgegrid, tmp_path):
     payload = {"key": "value"}
     body_file = tmp_path / "body.json"
@@ -216,7 +217,7 @@ def test_authenticate_post_with_body(mock_session_cls, _mock_edgegrid, tmp_path)
 
 
 def test_main_fails_without_requests(monkeypatch):
-    monkeypatch.setattr(manage_akamai, "HAS_REQUESTS", False)
+    monkeypatch.setattr(api, "HAS_REQUESTS", False)
     set_module_args({"endpoint": "/test", "method": "GET", "edge_auth": EDGE_AUTH})
     with pytest.raises(AnsibleFailJson) as exc_info:
         manage_akamai.main()
@@ -224,15 +225,15 @@ def test_main_fails_without_requests(monkeypatch):
 
 
 def test_main_fails_without_edgegrid(monkeypatch):
-    monkeypatch.setattr(manage_akamai, "HAS_EDGEGRID", False)
+    monkeypatch.setattr(api, "HAS_EDGEGRID", False)
     set_module_args({"endpoint": "/test", "method": "GET", "edge_auth": EDGE_AUTH})
     with pytest.raises(AnsibleFailJson) as exc_info:
         manage_akamai.main()
     assert "edgegrid" in exc_info.value.args[0]["msg"].lower()
 
 
-@patch.object(manage_akamai, "EdgeGridAuth", create=True)
-@patch.object(manage_akamai.requests, "Session")
+@patch.object(api, "EdgeGridAuth", create=True)
+@patch.object(api.requests, "Session")
 def test_main_get_success(mock_session_cls, _mock_edgegrid):
     response = MagicMock()
     response.status_code = 200
@@ -251,8 +252,8 @@ def test_main_get_success(mock_session_cls, _mock_edgegrid):
     assert exc_info.value.args[0]["msg"] == {"data": "ok"}
 
 
-@patch.object(manage_akamai, "EdgeGridAuth", create=True)
-@patch.object(manage_akamai.requests, "Session")
+@patch.object(api, "EdgeGridAuth", create=True)
+@patch.object(api.requests, "Session")
 def test_main_get_error(mock_session_cls, _mock_edgegrid):
     response = MagicMock()
     response.status_code = 401

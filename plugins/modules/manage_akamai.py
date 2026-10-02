@@ -30,12 +30,6 @@ options:
     required: true
     choices: [GET, PATCH, POST, PUT]
     type: str
-  section:
-    description:
-      - Section of the edgerc file to parse.
-    required: false
-    default: default
-    type: str
   body:
     description:
       - Additional data to submit with the HTTP request
@@ -46,33 +40,8 @@ options:
       - Additional headers to submit with the HTTP request
     required: false
     type: str
-  edge_config:
-    description:
-      - Path to the edgerc file with authentication details
-    required: false
-    type: path
-  edge_auth:
-    description:
-      - Dictionary containing host, client_token, client_secret and access_token
-    required: false
-    type: dict
-    suboptions:
-      host:
-        description: Akamai API host.
-        required: true
-        type: str
-      client_token:
-        description: EdgeGrid client token.
-        required: true
-        type: str
-      client_secret:
-        description: EdgeGrid client secret.
-        required: true
-        type: str
-      access_token:
-        description: EdgeGrid access token.
-        required: true
-        type: str
+extends_documentation_fragment:
+  - silexdata.akamai.auth
 '''
 
 EXAMPLES = r'''
@@ -129,28 +98,16 @@ msg:
 '''
 
 import json
-import traceback
 from urllib.parse import urljoin
 
-from ansible.module_utils.basic import AnsibleModule, missing_required_lib
-
-REQUESTS_IMP_ERR = None
-try:
-    import requests
-
-    HAS_REQUESTS = True
-except ImportError:
-    HAS_REQUESTS = False
-    REQUESTS_IMP_ERR = traceback.format_exc()
-
-EDGEGRID_IMP_ERR = None
-try:
-    from akamai.edgegrid import EdgeGridAuth, EdgeRc
-
-    HAS_EDGEGRID = True
-except ImportError:
-    HAS_EDGEGRID = False
-    EDGEGRID_IMP_ERR = traceback.format_exc()
+from ansible.module_utils.basic import AnsibleModule
+from ansible_collections.silexdata.akamai.plugins.module_utils.api import (
+    AUTH_ARGUMENT_SPEC,
+    AUTH_MUTUALLY_EXCLUSIVE,
+    AUTH_REQUIRED_ONE_OF,
+    check_requirements,
+    open_session,
+)
 
 
 def get_request_file(json_file):
@@ -166,32 +123,8 @@ def authenticate(params, check_mode=False):
     if check_mode:
         return False, params["method"] != "GET", {}
 
-    s = requests.Session()
-
-    # values from ansible
+    s, baseurl = open_session(params)
     endpoint = params["endpoint"]
-
-    if params["edge_config"]:
-        filename = params["edge_config"]
-
-        # extract edgerc properties
-        edgerc = EdgeRc(filename)
-
-        # values from ansible
-        section = params["section"]
-
-        # creates baseurl for akamai
-        baseurl = f"https://{edgerc.get(section, 'host')}"
-        s.auth = EdgeGridAuth.from_edgerc(edgerc, section)
-
-    if params["edge_auth"]:
-        # creates baseurl for akamai
-        baseurl = f"https://{params['edge_auth']['host']}"
-        s.auth = EdgeGridAuth(
-            client_token=params["edge_auth"]['client_token'],
-            client_secret=params["edge_auth"]['client_secret'],
-            access_token=params["edge_auth"]['access_token'],
-        )
 
     method = getattr(s, params["method"].lower())
     headers = {'content-type': 'application/json'}
@@ -210,35 +143,21 @@ def authenticate(params, check_mode=False):
 
 def main():
     fields = {
-        "section": {"required": False, "type": "str", "default": "default"},
         "endpoint": {"required": True, "type": "str"},
         "method": {"required": True, "type": "str", "choices": ["GET", "PATCH", "POST", "PUT"]},
         "body": {"required": False, "type": "str"},
         "headers": {"required": False, "type": "str"},
-        "edge_config": {"required": False, "type": "path"},
-        "edge_auth": {
-            "required": False,
-            "type": "dict",
-            "options": {
-                "host": {"required": True, "type": "str"},
-                "client_token": {"required": True, "type": "str", "no_log": True},
-                "client_secret": {"required": True, "type": "str", "no_log": True},
-                "access_token": {"required": True, "type": "str", "no_log": True},
-            },
-        },
     }
+    fields.update(AUTH_ARGUMENT_SPEC)
 
-    required_list = [
-        ('edge_config', 'edge_auth'),
-    ]
+    module = AnsibleModule(
+        argument_spec=fields,
+        mutually_exclusive=AUTH_MUTUALLY_EXCLUSIVE,
+        required_one_of=AUTH_REQUIRED_ONE_OF,
+        supports_check_mode=True,
+    )
 
-    module = AnsibleModule(argument_spec=fields, mutually_exclusive=required_list, required_one_of=required_list, supports_check_mode=True)
-
-    if not HAS_REQUESTS:
-        module.fail_json(msg=missing_required_lib("requests"), exception=REQUESTS_IMP_ERR)
-
-    if not HAS_EDGEGRID:
-        module.fail_json(msg=missing_required_lib("edgegrid-python"), exception=EDGEGRID_IMP_ERR)
+    check_requirements(module)
 
     is_error, has_changed, result = authenticate(module.params, module.check_mode)
 
