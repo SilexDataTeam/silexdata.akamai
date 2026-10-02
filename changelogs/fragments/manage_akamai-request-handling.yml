@@ -1,0 +1,55 @@
+---
+bugfixes:
+  - >-
+    manage_akamai - no longer fail with ``MODULE FAILURE`` when a request succeeds with an empty body, such as the
+    ``204 No Content`` returned when creating record sets or submitting a change list in Edge DNS. ``msg`` is now ``{}``
+    for an empty body (https://github.com/SilexDataTeam/silexdata.akamai/issues/10).
+  - >-
+    manage_akamai - return a response body that is not JSON, such as a ``text/dns`` zone file or an HTML error page,
+    as text in ``msg`` instead of failing with a JSON decoding traceback
+    (https://github.com/SilexDataTeam/silexdata.akamai/issues/10).
+  - >-
+    manage_akamai - send the ``headers`` option with the request. It was accepted but ignored. It now takes a
+    dictionary, and a header given there replaces the module's default of the same name, such as ``Content-Type``
+    (https://github.com/SilexDataTeam/silexdata.akamai/issues/10).
+  - >-
+    manage_akamai - fail with a message naming the method and URL when the request cannot be sent at all, for example
+    because the host does not resolve, instead of failing with a traceback.
+minor_changes:
+  - >-
+    manage_akamai - accept a dictionary or list in ``body`` and send it as JSON, and accept JSON text in a string
+    ``body`` (https://github.com/SilexDataTeam/silexdata.akamai/issues/10).
+  - >-
+    manage_akamai - add the ``src`` option to send the body from a file, and the ``body_format`` option, whose ``raw``
+    value sends the body unchanged, for example a ``text/dns`` zone file
+    (https://github.com/SilexDataTeam/silexdata.akamai/issues/10).
+  - >-
+    manage_akamai - add the ``status_code`` option, listing the HTTP statuses that succeed; any other status fails the
+    task (https://github.com/SilexDataTeam/silexdata.akamai/issues/10).
+  - manage_akamai - add the ``query`` option for query parameters, such as ``contractId`` and ``gid``.
+  - manage_akamai - add the ``DELETE`` and ``HEAD`` methods.
+  - >-
+    manage_akamai - add the ``account_switch_key`` option, sent as the ``accountSwitchKey`` query parameter. It falls
+    back to the ``AKAMAI_ACCOUNT_KEY`` environment variable, then to ``account_key`` in the ``edge_config`` section.
+  - >-
+    manage_akamai - return the response's ``status``, ``url`` and ``response_headers``, for example ``Location`` and
+    ``ETag`` (https://github.com/SilexDataTeam/silexdata.akamai/issues/10).
+  - manage_akamai - validate the request body in check mode too, so check mode reports a body that would be rejected.
+  - >-
+    manage_akamai - add the ``max_retries``, ``retry_on_status``, ``retry_delay`` and ``retry_max_delay`` options to
+    retry rate-limited (``429``) and unavailable (``503``) responses with exponential backoff and jitter, honouring
+    ``Retry-After``. Retries are off by default. A ``403`` added to ``retry_on_status`` waits at least 600 seconds,
+    the length of Property Manager's block for exceeding its per-IP rate limit. The new ``attempts`` return value
+    counts the requests sent.
+deprecated_features:
+  - >-
+    manage_akamai - passing the path of a JSON file in ``body`` is deprecated and will be removed in 2.0.0. Use ``src``
+    instead (https://github.com/SilexDataTeam/silexdata.akamai/issues/10).
+  - >-
+    manage_akamai - without ``status_code``, an HTTP status of 400 or above other than 400, 401 and 404 is still
+    treated as success, now with a deprecation warning. From 2.0.0 every status of 400 or above will fail unless it is
+    listed in ``status_code`` (https://github.com/SilexDataTeam/silexdata.akamai/issues/10).
+trivial:
+  - >-
+    Rewrite ``docs/manage_akamai_module.md`` for the 1.2.0 options, and drop its outdated Python 2.7 requirements and
+    "POST only" notes.

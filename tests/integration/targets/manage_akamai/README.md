@@ -6,10 +6,13 @@ runs every file there.
 
 ## Test categories
 
-- `expected-failures.yml` — argument-spec validation (`required_one_of`,
-  `mutually_exclusive`, required params). Service-independent; always runs.
-- `check-mode.yml` — asserts the module runs in check mode and makes no changes.
-  Service-independent; fails if the module does not support check mode.
+- `expected-failures.yml` — validation that happens before any request is sent:
+  the argument spec (`required_one_of`, `mutually_exclusive`, required params,
+  choices) and the request body. Service-independent; always runs.
+- `check-mode.yml` — asserts every method runs in check mode, sends nothing and
+  reports a change only for write methods, and that a body file works through
+  `src` and (deprecated) through `body`. Service-independent; fails if the
+  module does not support check mode.
 - `expected-return-values.yml` — **live**, service-dependent checks of the data
   returned by the API. Skipped when the service is unavailable.
 

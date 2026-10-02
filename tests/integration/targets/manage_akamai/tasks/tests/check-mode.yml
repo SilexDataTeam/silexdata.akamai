@@ -1,28 +1,105 @@
 ---
 # Check-mode tests for manage_akamai.
 #
-# These are written assuming the module supports check mode: a read-only GET
-# must run in check mode and report no changes. They are intentionally NOT
-# conditional on the module's current check-mode support -- if the module does
-# not declare supports_check_mode, Ansible skips it and these assertions fail by
-# design, surfacing the missing check-mode support.
+# These are written assuming the module supports check mode: every method must
+# run in check mode, send nothing, and report a change only for the methods
+# that write. They are intentionally NOT conditional on the module's current
+# check-mode support -- if the module does not declare supports_check_mode,
+# Ansible skips it and these assertions fail by design, surfacing the missing
+# check-mode support. Without a live service, a request that was sent anyway
+# fails to connect, so "not failed" also shows that nothing was sent.
 
-- name: Check-mode | Run a GET request in check mode
+- name: Check-mode | Run each read-only method in check mode
   silexdata.akamai.manage_akamai:
-    method: GET
+    method: "{{ manage_akamai_check_mode_method }}"
     endpoint: "{{ manage_akamai_endpoint }}"
     edge_auth: "{{ manage_akamai_edge_auth }}"
   check_mode: true
-  register: manage_akamai_check_mode
+  register: manage_akamai_check_mode_read
   ignore_errors: true
+  loop: [GET, HEAD]
+  loop_control:
+    loop_var: manage_akamai_check_mode_method
 
-- name: Check-mode | Assert the module ran in check mode and made no changes
+- name: Check-mode | Assert read-only methods ran in check mode and reported no change
   ansible.builtin.assert:
     that:
-      - manage_akamai_check_mode is not skipped
-      - manage_akamai_check_mode is not failed
-      - manage_akamai_check_mode is not changed
+      - manage_akamai_check_mode_read.results | select('skipped') | list | length == 0
+      - manage_akamai_check_mode_read.results | select('failed') | list | length == 0
+      - manage_akamai_check_mode_read.results | select('changed') | list | length == 0
     fail_msg: >-
       Module did not run correctly in check mode. The module must declare
-      supports_check_mode=True and make no changes when run in check mode.
-    success_msg: "Module supports check mode and reported no changes."
+      supports_check_mode=True, send nothing, and report no change for GET and HEAD.
+    success_msg: "Module supports check mode and reported no change for read-only methods."
+
+- name: Check-mode | Run each write method in check mode
+  silexdata.akamai.manage_akamai:
+    method: "{{ manage_akamai_check_mode_method }}"
+    endpoint: "{{ manage_akamai_endpoint }}"
+    body:
+      comment: check mode
+    edge_auth: "{{ manage_akamai_edge_auth }}"
+  check_mode: true
+  register: manage_akamai_check_mode_write
+  ignore_errors: true
+  loop: [POST, PUT, PATCH, DELETE]
+  loop_control:
+    loop_var: manage_akamai_check_mode_method
+
+- name: Check-mode | Assert write methods ran in check mode and predicted a change without sending anything
+  ansible.builtin.assert:
+    that:
+      - manage_akamai_check_mode_write.results | select('skipped') | list | length == 0
+      - manage_akamai_check_mode_write.results | select('failed') | list | length == 0
+      - manage_akamai_check_mode_write.results | select('changed') | list | length == 4
+      - manage_akamai_check_mode_write.results | map(attribute='msg') | unique | list == [{}]
+    fail_msg: >-
+      Module did not run correctly in check mode. Each write method must run
+      without sending a request and report a predicted change.
+    success_msg: "Module supports check mode and predicted a change for each write method."
+
+- name: Check-mode | Create a JSON body file
+  ansible.builtin.tempfile:
+    suffix: .json
+  register: manage_akamai_check_mode_body_file
+
+- name: Check-mode | Send the body file through src and through the deprecated body path
+  block:
+    - name: Check-mode | Write the body file
+      ansible.builtin.copy:
+        content: '{"zone": "example.org"}'
+        dest: "{{ manage_akamai_check_mode_body_file.path }}"
+        mode: "0600"
+
+    - name: Check-mode | POST the file with src
+      silexdata.akamai.manage_akamai:
+        method: POST
+        endpoint: "{{ manage_akamai_endpoint }}"
+        src: "{{ manage_akamai_check_mode_body_file.path }}"
+        edge_auth: "{{ manage_akamai_edge_auth }}"
+      check_mode: true
+      register: manage_akamai_check_mode_src
+
+    - name: Check-mode | POST the file as a path in body
+      silexdata.akamai.manage_akamai:
+        method: POST
+        endpoint: "{{ manage_akamai_endpoint }}"
+        body: "{{ manage_akamai_check_mode_body_file.path }}"
+        edge_auth: "{{ manage_akamai_edge_auth }}"
+      check_mode: true
+      register: manage_akamai_check_mode_body_path
+
+    - name: Check-mode | Assert both forms work and only the path in body is deprecated
+      ansible.builtin.assert:
+        that:
+          - manage_akamai_check_mode_src is changed
+          - manage_akamai_check_mode_src.deprecations | default([]) | length == 0
+          - manage_akamai_check_mode_body_path is changed
+          - manage_akamai_check_mode_body_path.deprecations | map(attribute='msg') | select('search', 'Use src instead') | list | length == 1
+        fail_msg: "Unexpected result for a body file: {{ [manage_akamai_check_mode_src, manage_akamai_check_mode_body_path] }}"
+        success_msg: "src and the deprecated path in body both work; only the latter is deprecated."
+  always:
+    - name: Check-mode | Remove the body file
+      ansible.builtin.file:
+        path: "{{ manage_akamai_check_mode_body_file.path }}"
+        state: absent

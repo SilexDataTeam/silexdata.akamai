@@ -1,9 +1,11 @@
 ---
 # Expected-failure tests for manage_akamai.
 #
-# These exercise the argument-spec validation that AnsibleModule performs
-# *before* any network request is made (required params, required_one_of,
-# mutually_exclusive), so they are safe to run with no live Akamai service.
+# These exercise the validation the module performs *before* any network
+# request is made (argument spec, required_one_of, mutually_exclusive, and the
+# request body), so they are safe to run with no live Akamai service. Each one
+# also checks the message, so a failure for some other reason (such as the
+# dry-run host not resolving) does not count as a pass.
 
 - name: Expected-failures | Fails when neither edge_config nor edge_auth is provided
   silexdata.akamai.manage_akamai:
@@ -16,7 +18,8 @@
   ansible.builtin.assert:
     that:
       - manage_akamai_missing_auth is failed
-    fail_msg: "Module should fail when no authentication method is supplied."
+      - "'one of the following is required' in manage_akamai_missing_auth.msg"
+    fail_msg: "Module should fail when no authentication method is supplied: {{ manage_akamai_missing_auth.msg }}"
     success_msg: "Module correctly required one of edge_config / edge_auth."
 
 - name: Expected-failures | Fails when edge_config and edge_auth are both provided
@@ -32,7 +35,8 @@
   ansible.builtin.assert:
     that:
       - manage_akamai_both_auth is failed
-    fail_msg: "Module should fail when both authentication methods are supplied."
+      - "'mutually exclusive' in manage_akamai_both_auth.msg"
+    fail_msg: "Module should fail when both authentication methods are supplied: {{ manage_akamai_both_auth.msg }}"
     success_msg: "Module correctly rejected mutually exclusive auth options."
 
 - name: Expected-failures | Fails when required parameters are missing
@@ -45,5 +49,107 @@
   ansible.builtin.assert:
     that:
       - manage_akamai_missing_required is failed
-    fail_msg: "Module should fail when required params (method/endpoint) are missing."
+      - "'missing required arguments' in manage_akamai_missing_required.msg"
+    fail_msg: "Module should fail when required params (method/endpoint) are missing: {{ manage_akamai_missing_required.msg }}"
     success_msg: "Module correctly required the method and endpoint parameters."
+
+- name: Expected-failures | Fails on an unsupported method
+  silexdata.akamai.manage_akamai:
+    method: OPTIONS
+    endpoint: "{{ manage_akamai_endpoint }}"
+    edge_auth: "{{ manage_akamai_edge_auth }}"
+  register: manage_akamai_bad_method
+  ignore_errors: true
+
+- name: Expected-failures | Fails when body and src are both provided
+  silexdata.akamai.manage_akamai:
+    method: POST
+    endpoint: "{{ manage_akamai_endpoint }}"
+    body:
+      zone: example.org
+    src: /tmp/nonexistent.json
+    edge_auth: "{{ manage_akamai_edge_auth }}"
+  register: manage_akamai_body_and_src
+  ignore_errors: true
+
+- name: Expected-failures | Fails on a body_format outside its choices
+  silexdata.akamai.manage_akamai:
+    method: POST
+    endpoint: "{{ manage_akamai_endpoint }}"
+    body_format: yaml
+    edge_auth: "{{ manage_akamai_edge_auth }}"
+  register: manage_akamai_bad_body_format
+  ignore_errors: true
+
+- name: Expected-failures | Fails when status_code holds something that is not an integer
+  silexdata.akamai.manage_akamai:
+    method: GET
+    endpoint: "{{ manage_akamai_endpoint }}"
+    status_code: [ok]
+    edge_auth: "{{ manage_akamai_edge_auth }}"
+  register: manage_akamai_bad_status_code
+  ignore_errors: true
+
+- name: Expected-failures | Assert the argument spec rejected each invalid option
+  ansible.builtin.assert:
+    that:
+      - manage_akamai_bad_method is failed
+      - "'value of method must be one of' in manage_akamai_bad_method.msg"
+      - manage_akamai_body_and_src is failed
+      - "'mutually exclusive: body|src' in manage_akamai_body_and_src.msg"
+      - manage_akamai_bad_body_format is failed
+      - "'value of body_format must be one of' in manage_akamai_bad_body_format.msg"
+      - manage_akamai_bad_status_code is failed
+      - "'status_code' in manage_akamai_bad_status_code.msg"
+    fail_msg: >-
+      An invalid option was not rejected as expected:
+      {{ [manage_akamai_bad_method, manage_akamai_body_and_src, manage_akamai_bad_body_format, manage_akamai_bad_status_code]
+         | map(attribute='msg') | list }}
+    success_msg: "Module rejected each invalid option."
+
+- name: Expected-failures | Fails when body_format=raw is given a dictionary
+  silexdata.akamai.manage_akamai:
+    method: POST
+    endpoint: "{{ manage_akamai_endpoint }}"
+    body:
+      zone: example.org
+    body_format: raw
+    edge_auth: "{{ manage_akamai_edge_auth }}"
+  register: manage_akamai_raw_dict
+  ignore_errors: true
+
+- name: Expected-failures | Fails when a string body is neither JSON nor an existing file
+  silexdata.akamai.manage_akamai:
+    method: POST
+    endpoint: "{{ manage_akamai_endpoint }}"
+    body: /tmp/manage-akamai-no-such-body.json
+    edge_auth: "{{ manage_akamai_edge_auth }}"
+  register: manage_akamai_bad_body
+  ignore_errors: true
+
+- name: Expected-failures | Assert the body was rejected before any request was sent
+  ansible.builtin.assert:
+    that:
+      - manage_akamai_raw_dict is failed
+      - "'body_format=raw needs body to be a string' in manage_akamai_raw_dict.msg"
+      - manage_akamai_bad_body is failed
+      - "'neither valid JSON nor the path of an existing file' in manage_akamai_bad_body.msg"
+    fail_msg: "An invalid body was not rejected as expected: {{ [manage_akamai_raw_dict.msg, manage_akamai_bad_body.msg] }}"
+    success_msg: "Module rejected each invalid body before sending a request."
+
+- name: Expected-failures | Fails on a negative retry count
+  silexdata.akamai.manage_akamai:
+    method: GET
+    endpoint: "{{ manage_akamai_endpoint }}"
+    max_retries: -1
+    edge_auth: "{{ manage_akamai_edge_auth }}"
+  register: manage_akamai_negative_retries
+  ignore_errors: true
+
+- name: Expected-failures | Assert the retry count was rejected before any request was sent
+  ansible.builtin.assert:
+    that:
+      - manage_akamai_negative_retries is failed
+      - "'max_retries must not be negative' in manage_akamai_negative_retries.msg"
+    fail_msg: "A negative max_retries was not rejected as expected: {{ manage_akamai_negative_retries.msg }}"
+    success_msg: "Module rejected a negative max_retries."
