@@ -191,3 +191,171 @@ def test_account_switch_key_falls_back_to_the_environment(monkeypatch):
     fallback, args = api.AUTH_ARGUMENT_SPEC["account_switch_key"]["fallback"]
     assert fallback is env_fallback
     assert fallback(*args) == "1-ENV"
+
+
+def status_response(status, retry_after=None):
+    response = fake_response()
+    response.status_code = status
+    if retry_after is not None:
+        response.headers["Retry-After"] = retry_after
+    return response
+
+
+@pytest.fixture
+def no_jitter(monkeypatch):
+    """Take the top of the jitter range, so waits are exact."""
+    monkeypatch.setattr(api.random, "uniform", lambda low, high: high)
+
+
+def retrying_client(responses, **retry_params):
+    sleeps = []
+    with patch.object(api, "EdgeGridAuth", create=True):
+        client = api.AkamaiClient(params(edge_auth=EDGE_AUTH, **retry_params), sleep=sleeps.append)
+    client.session = MagicMock()
+    client.session.request.side_effect = responses
+    return client, sleeps
+
+
+def test_no_retries_by_default(no_jitter):
+    client, sleeps = retrying_client([status_response(429)])
+
+    assert client.request("GET", "/x").status_code == 429
+    assert client.attempts == 1
+    assert sleeps == []
+
+
+def test_retries_until_success_with_exponential_backoff(no_jitter):
+    client, sleeps = retrying_client(
+        [status_response(503), status_response(503), status_response(429), status_response(200)],
+        max_retries=5,
+        retry_on_status=[429, 503],
+        retry_delay=5,
+        retry_max_delay=600,
+    )
+
+    assert client.request("GET", "/x").status_code == 200
+    assert client.attempts == 4
+    assert sleeps == [5, 10, 20]
+
+
+def test_returns_the_last_response_when_retries_run_out(no_jitter):
+    client, sleeps = retrying_client(
+        [status_response(429), status_response(429), status_response(429)],
+        max_retries=2,
+        retry_on_status=[429],
+        retry_delay=1,
+        retry_max_delay=600,
+    )
+
+    assert client.request("GET", "/x").status_code == 429
+    assert client.attempts == 3
+    assert sleeps == [1, 2]
+
+
+def test_other_statuses_are_not_retried(no_jitter):
+    client, sleeps = retrying_client([status_response(409)], max_retries=3, retry_on_status=[429, 503], retry_delay=1, retry_max_delay=60)
+
+    assert client.request("POST", "/x").status_code == 409
+    assert sleeps == []
+
+
+def test_waits_never_exceed_retry_max_delay(no_jitter):
+    client, sleeps = retrying_client(
+        [status_response(503)] * 4 + [status_response(200)], max_retries=4, retry_on_status=[503], retry_delay=10, retry_max_delay=25
+    )
+
+    client.request("GET", "/x")
+
+    assert sleeps == [10, 20, 25, 25]
+
+
+def test_jitter_shortens_the_wait_by_up_to_half(monkeypatch):
+    monkeypatch.setattr(api.random, "uniform", lambda low, high: low)
+    client, sleeps = retrying_client([status_response(503), status_response(200)], max_retries=1, retry_on_status=[503], retry_delay=8, retry_max_delay=60)
+
+    client.request("GET", "/x")
+
+    assert sleeps == [4]
+
+
+def test_a_longer_retry_after_is_honoured_up_to_the_cap(no_jitter):
+    client, sleeps = retrying_client(
+        [status_response(429, "30"), status_response(429, "9000"), status_response(200)],
+        max_retries=2,
+        retry_on_status=[429],
+        retry_delay=1,
+        retry_max_delay=120,
+    )
+
+    client.request("GET", "/x")
+
+    assert sleeps == [30, 120]
+
+
+def test_a_shorter_retry_after_does_not_shorten_the_backoff(no_jitter):
+    client, sleeps = retrying_client([status_response(429, "1"), status_response(200)], max_retries=1, retry_on_status=[429], retry_delay=5, retry_max_delay=60)
+
+    client.request("GET", "/x")
+
+    assert sleeps == [5]
+
+
+def test_retry_after_as_an_http_date():
+    response = status_response(429, "Wed, 21 Oct 2015 07:28:30 GMT")
+    now = api.parsedate_to_datetime("Wed, 21 Oct 2015 07:28:00 GMT").timestamp()
+
+    assert api.retry_after_seconds(response, now=now) == 30
+
+
+@pytest.mark.parametrize("value", [None, "", "soon", "-5"])
+def test_unreadable_retry_after_is_ignored(value):
+    assert api.retry_after_seconds(status_response(429, value)) is None
+
+
+def test_a_retry_after_in_the_past_means_no_extra_wait():
+    response = status_response(429, "Wed, 21 Oct 2015 07:28:00 GMT")
+    assert api.retry_after_seconds(response) == 0
+
+
+def test_403_is_not_retried_unless_listed(no_jitter):
+    client, sleeps = retrying_client([status_response(403)], max_retries=3, retry_on_status=[429, 503], retry_delay=1, retry_max_delay=60)
+
+    assert client.request("GET", "/papi/v1/groups").status_code == 403
+    assert sleeps == []
+
+
+def test_a_listed_403_waits_out_the_papi_block(no_jitter):
+    client, sleeps = retrying_client(
+        [status_response(403), status_response(403), status_response(200)],
+        max_retries=2,
+        retry_on_status=[403, 429],
+        retry_delay=5,
+        retry_max_delay=60,
+    )
+
+    assert client.request("GET", "/papi/v1/groups").status_code == 200
+    assert sleeps == [600, 600]
+
+
+def test_connection_errors_are_not_retried(no_jitter):
+    client, sleeps = retrying_client(requests.exceptions.ConnectionError("refused"), max_retries=3, retry_on_status=[503], retry_delay=1, retry_max_delay=60)
+
+    with pytest.raises(api.AkamaiRequestError):
+        client.request("GET", "/x")
+    assert client.attempts == 1
+    assert sleeps == []
+
+
+@pytest.mark.parametrize("name", ["max_retries", "retry_delay", "retry_max_delay"])
+def test_negative_retry_options_fail(name):
+    module = failing_module()
+    module.params = {"max_retries": 0, "retry_delay": 5, "retry_max_delay": 600, name: -1}
+
+    with pytest.raises(ModuleFailed) as exc_info:
+        api.check_retry_params(module)
+    assert exc_info.value.args[0]["msg"] == f"{name} must not be negative, got -1."
+
+
+def test_retry_defaults_match_the_doc_fragment():
+    defaults = {name: spec["default"] for name, spec in api.RETRY_ARGUMENT_SPEC.items()}
+    assert defaults == {"max_retries": 0, "retry_on_status": [429, 503], "retry_delay": 5, "retry_max_delay": 600}

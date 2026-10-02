@@ -136,3 +136,20 @@
       - "'neither valid JSON nor the path of an existing file' in manage_akamai_bad_body.msg"
     fail_msg: "An invalid body was not rejected as expected: {{ [manage_akamai_raw_dict.msg, manage_akamai_bad_body.msg] }}"
     success_msg: "Module rejected each invalid body before sending a request."
+
+- name: Expected-failures | Fails on a negative retry count
+  silexdata.akamai.manage_akamai:
+    method: GET
+    endpoint: "{{ manage_akamai_endpoint }}"
+    max_retries: -1
+    edge_auth: "{{ manage_akamai_edge_auth }}"
+  register: manage_akamai_negative_retries
+  ignore_errors: true
+
+- name: Expected-failures | Assert the retry count was rejected before any request was sent
+  ansible.builtin.assert:
+    that:
+      - manage_akamai_negative_retries is failed
+      - "'max_retries must not be negative' in manage_akamai_negative_retries.msg"
+    fail_msg: "A negative max_retries was not rejected as expected: {{ manage_akamai_negative_retries.msg }}"
+    success_msg: "Module rejected a negative max_retries."

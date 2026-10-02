@@ -90,6 +90,7 @@ options:
     version_added: 1.2.0
 extends_documentation_fragment:
   - silexdata.akamai.auth
+  - silexdata.akamai.retries
 attributes:
   check_mode:
     description: Can run in check mode and return a change prediction without modifying the target.
@@ -217,6 +218,12 @@ url:
   returned: when a request was sent
   sample: https://akab-xxxxxxxx.luna.akamaiapis.net/config-dns/v2/zones?contractId=1-ABCDE&gid=12345
   version_added: 1.2.0
+attempts:
+  description: How many times the request was sent, counting retries.
+  type: int
+  returned: when a request was sent
+  sample: 1
+  version_added: 1.2.0
 response_headers:
   description:
     - Headers of the response, for example C(Location) for a created resource or C(ETag) for a later C(If-Match).
@@ -236,9 +243,11 @@ from ansible_collections.silexdata.akamai.plugins.module_utils.api import (
     AUTH_ARGUMENT_SPEC,
     AUTH_MUTUALLY_EXCLUSIVE,
     AUTH_REQUIRED_ONE_OF,
+    RETRY_ARGUMENT_SPEC,
     AkamaiClient,
     AkamaiRequestError,
     check_requirements,
+    check_retry_params,
     merge_headers,
     parse_response_body,
 )
@@ -338,6 +347,7 @@ def main():
         "status_code": {"required": False, "type": "list", "elements": "int"},
     }
     fields.update(AUTH_ARGUMENT_SPEC)
+    fields.update(RETRY_ARGUMENT_SPEC)
 
     module = AnsibleModule(
         argument_spec=fields,
@@ -347,6 +357,7 @@ def main():
     )
 
     check_requirements(module)
+    check_retry_params(module)
 
     method = module.params["method"]
     kwargs = build_request(module)
@@ -356,15 +367,17 @@ def main():
     if module.check_mode:
         module.exit_json(changed=method not in READ_ONLY_METHODS, msg={})
 
+    client = AkamaiClient(module.params)
     try:
-        response = AkamaiClient(module.params).request(method, module.params["endpoint"], **kwargs)
+        response = client.request(method, module.params["endpoint"], **kwargs)
     except AkamaiRequestError as exc:
-        module.fail_json(msg=str(exc))
+        module.fail_json(msg=str(exc), attempts=client.attempts)
 
     result = {
         "msg": parse_response_body(response),
         "status": response.status_code,
         "url": response.url,
+        "attempts": client.attempts,
         "response_headers": dict(response.headers),
     }
 

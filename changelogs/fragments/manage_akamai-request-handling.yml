@@ -35,6 +35,12 @@ minor_changes:
     manage_akamai - return the response's ``status``, ``url`` and ``response_headers``, for example ``Location`` and
     ``ETag`` (https://github.com/SilexDataTeam/silexdata.akamai/issues/10).
   - manage_akamai - validate the request body in check mode too, so check mode reports a body that would be rejected.
+  - >-
+    manage_akamai - add the ``max_retries``, ``retry_on_status``, ``retry_delay`` and ``retry_max_delay`` options to
+    retry rate-limited (``429``) and unavailable (``503``) responses with exponential backoff and jitter, honouring
+    ``Retry-After``. Retries are off by default. A ``403`` added to ``retry_on_status`` waits at least 600 seconds,
+    the length of Property Manager's block for exceeding its per-IP rate limit. The new ``attempts`` return value
+    counts the requests sent.
 deprecated_features:
   - >-
     manage_akamai - passing the path of a JSON file in ``body`` is deprecated and will be removed in 2.0.0. Use ``src``

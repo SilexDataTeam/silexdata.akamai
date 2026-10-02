@@ -500,3 +500,30 @@ def test_account_switch_key_reaches_the_request(session):
     run_module({"endpoint": "/papi/v1/contracts", "method": "GET", "account_switch_key": "1-ABC"})
 
     assert sent(session)[2]["params"] == {"accountSwitchKey": "1-ABC"}
+
+
+def test_attempts_is_returned(session):
+    session.request.return_value = fake_response(200, {})
+
+    result = run_module({"endpoint": "/test", "method": "GET"})[1]
+
+    assert result["attempts"] == 1
+
+
+def test_retries_reach_the_client(session, monkeypatch):
+    monkeypatch.setattr(api.time, "sleep", MagicMock())
+    session.request.side_effect = [fake_response(429, {}), fake_response(200, {"ok": True})]
+
+    failed, result = run_module({"endpoint": "/test", "method": "GET", "max_retries": 2, "retry_delay": 0})
+
+    assert not failed
+    assert result["msg"] == {"ok": True}
+    assert result["attempts"] == 2
+
+
+def test_negative_max_retries_fails_before_sending(session):
+    failed, result = run_module({"endpoint": "/test", "method": "GET", "max_retries": -1})
+
+    assert failed
+    assert "max_retries must not be negative" in result["msg"]
+    session.request.assert_not_called()

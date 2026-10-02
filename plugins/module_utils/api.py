@@ -9,7 +9,10 @@ from __future__ import absolute_import, division, print_function
 
 __metaclass__ = type
 
+import random
+import time
 import traceback
+from email.utils import parsedate_to_datetime
 from urllib.parse import urljoin
 
 from ansible.module_utils.basic import env_fallback, missing_required_lib
@@ -56,6 +59,18 @@ AUTH_ARGUMENT_SPEC = {
     },
 }
 
+# Matches the silexdata.akamai.retries doc fragment.
+RETRY_ARGUMENT_SPEC = {
+    "max_retries": {"required": False, "type": "int", "default": 0},
+    "retry_on_status": {"required": False, "type": "list", "elements": "int", "default": [429, 503]},
+    "retry_delay": {"required": False, "type": "float", "default": 5},
+    "retry_max_delay": {"required": False, "type": "float", "default": 600},
+}
+
+# Property Manager answers 403 when its per-IP rate limit is exceeded and
+# blocks the address for 10 minutes; retrying sooner extends the block.
+FORBIDDEN_MIN_DELAY = 600
+
 AUTH_MUTUALLY_EXCLUSIVE = [("edge_config", "edge_auth")]
 AUTH_REQUIRED_ONE_OF = [("edge_config", "edge_auth")]
 
@@ -67,6 +82,28 @@ def check_requirements(module):
 
     if not HAS_EDGEGRID:
         module.fail_json(msg=missing_required_lib("edgegrid-python"), exception=EDGEGRID_IMP_ERR)
+
+
+def check_retry_params(module):
+    """Fail the module if a retry option is out of range."""
+    for name in ("max_retries", "retry_delay", "retry_max_delay"):
+        if module.params.get(name) is not None and module.params[name] < 0:
+            module.fail_json(msg=f"{name} must not be negative, got {module.params[name]}.")
+
+
+def retry_after_seconds(response, now=None):
+    """Seconds the Retry-After header asks to wait, or None when absent or unreadable."""
+    value = response.headers.get("Retry-After")
+    if not value:
+        return None
+    value = value.strip()
+    if value.isdigit():
+        return float(value)
+    try:
+        when = parsedate_to_datetime(value)
+    except (TypeError, ValueError):
+        return None
+    return max(0.0, when.timestamp() - (time.time() if now is None else now))
 
 
 def open_session(params):
@@ -104,26 +141,46 @@ class AkamaiRequestError(Exception):
 
 
 class AkamaiClient:
-    """Send EdgeGrid-signed requests to one Akamai API host."""
+    """Send EdgeGrid-signed requests to one Akamai API host, retrying where asked."""
 
-    def __init__(self, params):
+    def __init__(self, params, sleep=time.sleep):
         self.session, self.baseurl, self.account_switch_key = open_session(params)
+        self.max_retries = params.get("max_retries") or 0
+        self.retry_on_status = params.get("retry_on_status") or []
+        self.retry_delay = params.get("retry_delay") or 0
+        self.retry_max_delay = params.get("retry_max_delay") or 0
+        self.attempts = 0
+        self._sleep = sleep
+
+    def retry_wait(self, retry, response):
+        """Seconds to wait before retry number `retry` (0 for the first)."""
+        backoff = self.retry_delay * (2**retry) * random.uniform(0.5, 1.0)
+        wait = min(max(backoff, retry_after_seconds(response) or 0), self.retry_max_delay)
+        if response.status_code == 403:
+            wait = max(wait, FORBIDDEN_MIN_DELAY)
+        return wait
 
     def request(self, method, endpoint, params=None, **kwargs):
         """Send one request; keyword arguments go to requests.Session.request.
 
         The account switch key is added as the accountSwitchKey query
-        parameter unless the caller already set one.
+        parameter unless the caller already set one. A response whose status
+        is in retry_on_status is retried up to max_retries times.
         """
         url = urljoin(self.baseurl, endpoint)
         if self.account_switch_key and "accountSwitchKey" not in (params or {}) and "accountSwitchKey=" not in endpoint:
             params = dict(params or {}, accountSwitchKey=self.account_switch_key)
         if params is not None:
             kwargs["params"] = params
-        try:
-            return self.session.request(method, url, **kwargs)
-        except requests.exceptions.RequestException as exc:
-            raise AkamaiRequestError(f"{method} {url} failed: {exc}") from exc
+        for retry in range(self.max_retries + 1):
+            self.attempts = retry + 1
+            try:
+                response = self.session.request(method, url, **kwargs)
+            except requests.exceptions.RequestException as exc:
+                raise AkamaiRequestError(f"{method} {url} failed: {exc}") from exc
+            if retry == self.max_retries or response.status_code not in self.retry_on_status:
+                return response
+            self._sleep(self.retry_wait(retry, response))
 
 
 def merge_headers(defaults, extra):
