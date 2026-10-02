@@ -10,6 +10,7 @@ from __future__ import absolute_import, division, print_function
 __metaclass__ = type
 
 import traceback
+from urllib.parse import urljoin
 
 from ansible.module_utils.basic import missing_required_lib
 
@@ -80,3 +81,48 @@ def open_session(params):
         )
 
     return session, baseurl
+
+
+class AkamaiRequestError(Exception):
+    """The request never produced an HTTP response (DNS, TLS, connection...)."""
+
+
+class AkamaiClient:
+    """Send EdgeGrid-signed requests to one Akamai API host."""
+
+    def __init__(self, params):
+        self.session, self.baseurl = open_session(params)
+
+    def request(self, method, endpoint, **kwargs):
+        """Send one request; keyword arguments go to requests.Session.request."""
+        url = urljoin(self.baseurl, endpoint)
+        try:
+            return self.session.request(method, url, **kwargs)
+        except requests.exceptions.RequestException as exc:
+            raise AkamaiRequestError(f"{method} {url} failed: {exc}") from exc
+
+
+def merge_headers(defaults, extra):
+    """Merge request headers case-insensitively, the caller's taking precedence."""
+    merged = {name.lower(): (name, value) for name, value in defaults.items()}
+    for name, value in (extra or {}).items():
+        merged[name.lower()] = (name, str(value))
+    return dict(merged.values())
+
+
+def parse_response_body(response):
+    """Return the response body: parsed JSON, {} when empty, otherwise the text.
+
+    Many Akamai operations answer 204 No Content, and some return non-JSON
+    media types such as text/dns zone files, so the body is only parsed as
+    JSON when it has one and it is (or claims to be) JSON.
+    """
+    if not response.content:
+        return {}
+    content_type = response.headers.get("Content-Type", "").split(";", 1)[0].strip().lower()
+    if not content_type or content_type == "application/json" or content_type.endswith("+json"):
+        try:
+            return response.json()
+        except ValueError:
+            pass
+    return response.text

@@ -37,9 +37,12 @@ options:
     type: str
   headers:
     description:
-      - Additional headers to submit with the HTTP request
+      - Additional headers to submit with the HTTP request, for example C(Accept), C(If-Match) or C(PAPI-Use-Prefixes).
+      - Header names are case-insensitive. A header given here replaces the module's default of the same name,
+        such as C(Content-Type).
+      - Before 1.2.0 this option was accepted but ignored.
     required: false
-    type: str
+    type: dict
 extends_documentation_fragment:
   - silexdata.akamai.auth
 '''
@@ -98,15 +101,17 @@ msg:
 '''
 
 import json
-from urllib.parse import urljoin
 
 from ansible.module_utils.basic import AnsibleModule
 from ansible_collections.silexdata.akamai.plugins.module_utils.api import (
     AUTH_ARGUMENT_SPEC,
     AUTH_MUTUALLY_EXCLUSIVE,
     AUTH_REQUIRED_ONE_OF,
+    AkamaiClient,
+    AkamaiRequestError,
     check_requirements,
-    open_session,
+    merge_headers,
+    parse_response_body,
 )
 
 
@@ -123,22 +128,17 @@ def authenticate(params, check_mode=False):
     if check_mode:
         return False, params["method"] != "GET", {}
 
-    s, baseurl = open_session(params)
-    endpoint = params["endpoint"]
-
-    method = getattr(s, params["method"].lower())
-    headers = {'content-type': 'application/json'}
-    url = urljoin(baseurl, endpoint)
+    client = AkamaiClient(params)
+    kwargs = {"headers": merge_headers({"content-type": "application/json"}, params["headers"])}
     if params["body"] is not None:
-        body = get_request_file(params["body"])
-        response = method(url, json=body, headers=headers)
-    else:
-        response = method(url, headers=headers)
+        kwargs["json"] = get_request_file(params["body"])
+    response = client.request(params["method"], params["endpoint"], **kwargs)
+    body = parse_response_body(response)
     changed = params["method"].upper() != "GET"
     if response.status_code not in [400, 401, 404]:
-        return False, changed, response.json()
+        return False, changed, body
     else:
-        return True, False, response.json()
+        return True, False, body
 
 
 def main():
@@ -146,7 +146,7 @@ def main():
         "endpoint": {"required": True, "type": "str"},
         "method": {"required": True, "type": "str", "choices": ["GET", "PATCH", "POST", "PUT"]},
         "body": {"required": False, "type": "str"},
-        "headers": {"required": False, "type": "str"},
+        "headers": {"required": False, "type": "dict"},
     }
     fields.update(AUTH_ARGUMENT_SPEC)
 
@@ -159,7 +159,10 @@ def main():
 
     check_requirements(module)
 
-    is_error, has_changed, result = authenticate(module.params, module.check_mode)
+    try:
+        is_error, has_changed, result = authenticate(module.params, module.check_mode)
+    except AkamaiRequestError as exc:
+        module.fail_json(msg=str(exc))
 
     if not is_error:
         module.exit_json(changed=has_changed, msg=result)

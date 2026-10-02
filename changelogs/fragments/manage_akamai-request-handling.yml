@@ -1,0 +1,17 @@
+---
+bugfixes:
+  - >-
+    manage_akamai - no longer fail with ``MODULE FAILURE`` when a request succeeds with an empty body, such as the
+    ``204 No Content`` returned when creating record sets or submitting a change list in Edge DNS. ``msg`` is now ``{}``
+    for an empty body (https://github.com/SilexDataTeam/silexdata.akamai/issues/10).
+  - >-
+    manage_akamai - return a response body that is not JSON, such as a ``text/dns`` zone file or an HTML error page,
+    as text in ``msg`` instead of failing with a JSON decoding traceback
+    (https://github.com/SilexDataTeam/silexdata.akamai/issues/10).
+  - >-
+    manage_akamai - send the ``headers`` option with the request. It was accepted but ignored. It now takes a
+    dictionary, and a header given there replaces the module's default of the same name, such as ``Content-Type``
+    (https://github.com/SilexDataTeam/silexdata.akamai/issues/10).
+  - >-
+    manage_akamai - fail with a message naming the method and URL when the request cannot be sent at all, for example
+    because the host does not resolve, instead of failing with a traceback.
