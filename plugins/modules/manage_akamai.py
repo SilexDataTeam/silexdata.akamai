@@ -45,8 +45,7 @@ options:
       - Body of the request.
       - With O(body_format=json), a dictionary or list is sent as JSON, and a string must be JSON text.
       - With O(body_format=raw), the body must be a string and is sent exactly as given.
-      - Deprecated, to be removed in 2.0.0. With O(body_format=json), a string that is the path of an existing file
-        is read as a JSON file, as it was before 1.2.0. Use O(src) for files instead.
+      - Before 2.0.0, a string that was the path of an existing file was read as a JSON file. Use O(src) for files.
       - Mutually exclusive with O(src).
     required: false
     type: raw
@@ -81,9 +80,8 @@ options:
     description:
       - HTTP status codes that count as success. Any other status fails the task.
       - Use it to accept an expected error, for example V([201, 409]) to treat "zone already exists" as success.
-      - If not set, only V(400), V(401) and V(404) fail the task, as before 1.2.0, and any other status of 400 or above
-        is treated as success with a deprecation warning. From 2.0.0, every status of 400 or above will fail unless it is
-        listed here.
+      - If not set, every status below 400 succeeds and every status of 400 or above fails.
+      - Before 2.0.0, only V(400), V(401) and V(404) failed when this was not set.
     required: false
     type: list
     elements: int
@@ -180,9 +178,10 @@ RETURN = r'''
 ---
 msg:
   description:
-    - The response body. Parsed JSON when the response is JSON, V({}) when the body is empty, otherwise the text.
-    - On failure, the error body, usually an RFC 9457 problem details object.
-    - V({}) in check mode.
+    - On success, the response body. Parsed JSON when the response is JSON, V({}) when the body is empty, otherwise
+      the text. V({}) in check mode.
+    - "On failure, a description of the error, such as C(HTTP 409 Conflict: Zone already exists). The error body itself
+      is in RV(response_body). Before 2.0.0, a failure's RV(msg) was the error body."
   type: raw
   returned: always
   sample:
@@ -206,6 +205,19 @@ msg:
         shared: false
         sureRouteName: Foo-Bar-Baz.akasrg.akamai.com
         type: Production
+response_body:
+  description:
+    - The response body, on success and on failure. Parsed JSON when the response is JSON, V({}) when the body is
+      empty, otherwise the text. Akamai error bodies are usually RFC 9457 problem details objects, with C(type),
+      C(title), C(detail) and C(status).
+  type: raw
+  returned: when a request was sent
+  sample:
+    type: https://problems.luna.akamaiapis.net/config-dns/v2/ZONE_ALREADY_EXISTS
+    title: Zone already exists
+    detail: Zone example.org already exists
+    status: 409
+  version_added: 2.0.0
 status:
   description: HTTP status code of the response.
   type: int
@@ -236,7 +248,6 @@ response_headers:
 '''
 
 import json
-import os
 
 from ansible.module_utils.basic import AnsibleModule
 from ansible_collections.silexdata.akamai.plugins.module_utils.api import (
@@ -248,21 +259,12 @@ from ansible_collections.silexdata.akamai.plugins.module_utils.api import (
     AkamaiRequestError,
     check_requirements,
     check_retry_params,
+    describe_failure,
     merge_headers,
     parse_response_body,
 )
 
-COLLECTION = "silexdata.akamai"
 READ_ONLY_METHODS = ("GET", "HEAD")
-# Before 1.2.0, only these statuses failed the task; status_code replaces them.
-LEGACY_FAILURE_STATUSES = (400, 401, 404)
-
-
-def get_request_file(json_file):
-    with open(json_file) as j:
-        body = json.load(j)
-
-    return body
 
 
 def build_body(module):
@@ -293,17 +295,10 @@ def build_body(module):
         return {"data": body.encode("utf-8")}
 
     if isinstance(body, str):
-        if os.path.isfile(body):
-            module.deprecate(
-                "Passing the path of a JSON file in body is deprecated. Use src instead.",
-                version="2.0.0",
-                collection_name=COLLECTION,
-            )
-            return {"json": get_request_file(body)}
         try:
             return {"json": json.loads(body)}
-        except ValueError:
-            module.fail_json(msg="body is a string that is neither valid JSON nor the path of an existing file.")
+        except ValueError as exc:
+            module.fail_json(msg=f"body is a string that is not valid JSON: {exc}. To send a file, use src.")
 
     return {"json": body}
 
@@ -320,19 +315,10 @@ def build_request(module):
 
 
 def request_failed(module, status):
-    """Decide whether a status fails the task, warning where 2.0.0 will differ."""
+    """Whether a status fails the task: any status outside status_code, else any of 400 or above."""
     if module.params["status_code"]:
         return status not in module.params["status_code"]
-    if status in LEGACY_FAILURE_STATUSES:
-        return True
-    if status >= 400:
-        module.deprecate(
-            f"HTTP {status} was treated as success because status_code is not set. From 2.0.0, every status of 400 "
-            "or above fails unless it is listed in status_code. Set status_code to choose the statuses that succeed.",
-            version="2.0.0",
-            collection_name=COLLECTION,
-        )
-    return False
+    return status >= 400
 
 
 def main():
@@ -373,8 +359,10 @@ def main():
     except AkamaiRequestError as exc:
         module.fail_json(msg=str(exc), attempts=client.attempts)
 
+    body = parse_response_body(response)
     result = {
-        "msg": parse_response_body(response),
+        "msg": body,
+        "response_body": body,
         "status": response.status_code,
         "url": response.url,
         "attempts": client.attempts,
@@ -382,6 +370,7 @@ def main():
     }
 
     if request_failed(module, response.status_code):
+        result["msg"] = describe_failure(response, body)
         module.fail_json(**result)
 
     module.exit_json(changed=method not in READ_ONLY_METHODS, **result)

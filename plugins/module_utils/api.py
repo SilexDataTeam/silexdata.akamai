@@ -207,3 +207,29 @@ def parse_response_body(response):
         except ValueError:
             pass
     return response.text
+
+
+def describe_failure(response, body):
+    """One line describing a failed response, e.g. 'HTTP 409 Conflict: Zone already exists: ...'.
+
+    Akamai error bodies are usually RFC 9457 problem details; their title,
+    detail and errors[] are included. A text body is included, shortened.
+    """
+    message = f"HTTP {response.status_code}"
+    if response.reason:
+        message += f" {response.reason}"
+    details = []
+    if isinstance(body, dict):
+        details = [str(body[key]) for key in ("title", "detail") if body.get(key)]
+        errors = body.get("errors")
+        if isinstance(errors, list) and errors:
+            described = [str(error.get("detail") or error.get("title") or error) if isinstance(error, dict) else str(error) for error in errors[:5]]
+            if len(errors) > 5:
+                described.append(f"and {len(errors) - 5} more")
+            details.append("; ".join(described))
+    elif isinstance(body, str) and body.strip():
+        text = " ".join(body.split())
+        details = [text if len(text) <= 200 else text[:197] + "..."]
+    if details:
+        message += ": " + ": ".join(details)
+    return message

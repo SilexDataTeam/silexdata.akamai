@@ -11,8 +11,7 @@ runs every file there.
   choices) and the request body. Service-independent; always runs.
 - `check-mode.yml` — asserts every method runs in check mode, sends nothing and
   reports a change only for write methods, and that a body file works through
-  `src` and (deprecated) through `body`. Service-independent; fails if the
-  module does not support check mode.
+  `src`. Service-independent; fails if the module does not support check mode.
 - `expected-return-values.yml` — **live**, service-dependent checks of the data
   returned by the API. Skipped when the service is unavailable.
 

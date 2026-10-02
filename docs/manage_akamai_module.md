@@ -55,12 +55,13 @@ variable, then `account_key` in the `.edgerc` section.
 | `src` | File to send as the request body instead of `body` |
 | `body_format` | `json` (default) or `raw`, which sends the body unchanged |
 | `headers` | Extra request headers, such as `If-Match` or `PAPI-Use-Prefixes` |
-| `status_code` | HTTP statuses that count as success |
+| `status_code` | HTTP statuses that count as success; without it, every status of 400 or above fails |
 | `max_retries`, `retry_on_status`, `retry_delay`, `retry_max_delay` | Retry rate-limited (`429`) and unavailable (`503`) responses with backoff |
 
-The response body comes back in `msg`: parsed JSON, `{}` when the body is
-empty (for example `204 No Content`), or text when it is not JSON. The
-module also returns `status`, `url`, `attempts` and `response_headers`.
+The response body comes back in `msg` and `response_body`: parsed JSON,
+`{}` when the body is empty (for example `204 No Content`), or text when it
+is not JSON. On failure, `msg` describes the error instead. The module also
+returns `status`, `url`, `attempts` and `response_headers`.
 
 ## Example: an Edge DNS zone
 
@@ -93,16 +94,18 @@ module also returns `status`, `url`, `attempts` and `response_headers`.
     edge_config: ~/.edgerc
 ```
 
-## Changes in 1.2.0, and what 2.0.0 will change
+## Upgrading from 1.x to 2.0.0
 
-- **`body` takes data directly.** Before 1.2.0 it had to be the path of a
-  JSON file. A path still works but is deprecated; use `src` instead.
-  2.0.0 will treat a string `body` as the body itself.
-- **Set `status_code`.** Without it, only `400`, `401` and `404` fail the
-  task, as before, and any other status of 400 or above is treated as
-  success with a deprecation warning. From 2.0.0, every status of 400 or
-  above will fail unless `status_code` lists it.
-- **`headers` is sent.** It used to be accepted and ignored.
+| 1.x | 2.0.0 |
+| --- | --- |
+| `body: /path/to/file.json` read the file | `src: /path/to/file.json`; a string `body` is the body itself |
+| Without `status_code`, only `400`, `401` and `404` failed | Without `status_code`, every status of 400 or above fails |
+| A failed task's `msg` was the error body | A failed task's `msg` describes the error, such as `HTTP 409 Conflict: Zone already exists`; the error body is in `response_body` |
+| `silexdata.akamai.akamai` redirected to `manage_akamai` | `silexdata.akamai.akamai` is removed; use `silexdata.akamai.manage_akamai` |
+
+1.2.0 warns about the first two wherever a task relies on them, so a
+playbook that runs on 1.2.0 without deprecation warnings needs only the
+last two rows checked.
 
 ## Acknowledgements
 

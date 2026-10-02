@@ -4,10 +4,12 @@ requires_ansible: '>=2.14.0'
 plugin_routing:
   modules:
     akamai:
-      redirect: silexdata.akamai.manage_akamai
-      deprecation:
-        removal_version: 2.0.0
+      # removal_date rather than removal_version: ansible-test rejects a
+      # tombstone removal_version later than galaxy.yml's version, which the
+      # release workflow only bumps to 2.0.0 after this merges.
+      tombstone:
+        removal_date: '2026-10-02'
         warning_text: >-
-          The silexdata.akamai.akamai module has been renamed to
-          silexdata.akamai.manage_akamai. Update tasks to use the new name;
-          the old name is a deprecated redirect and will be removed in 2.0.0.
+          The silexdata.akamai.akamai module was renamed to
+          silexdata.akamai.manage_akamai in 1.1.0, and the old name was removed
+          in 2.0.0. Use silexdata.akamai.manage_akamai.

@@ -359,3 +359,37 @@ def test_negative_retry_options_fail(name):
 def test_retry_defaults_match_the_doc_fragment():
     defaults = {name: spec["default"] for name, spec in api.RETRY_ARGUMENT_SPEC.items()}
     assert defaults == {"max_retries": 0, "retry_on_status": [429, 503], "retry_delay": 5, "retry_max_delay": 600}
+
+
+def failed_response(status, reason):
+    response = fake_response()
+    response.status_code = status
+    response.reason = reason
+    return response
+
+
+@pytest.mark.parametrize(
+    ("body", "expected"),
+    [
+        ({}, "HTTP 409 Conflict"),
+        ({"title": "Zone already exists"}, "HTTP 409 Conflict: Zone already exists"),
+        (
+            {"title": "Zone already exists", "detail": "example.org exists in contract 1-ABC"},
+            "HTTP 409 Conflict: Zone already exists: example.org exists in contract 1-ABC",
+        ),
+        ({"errors": ["a", "b"]}, "HTTP 409 Conflict: a; b"),
+        (
+            {"title": "Invalid", "errors": [{"detail": str(n)} for n in range(7)]},
+            "HTTP 409 Conflict: Invalid: 0; 1; 2; 3; 4; and 2 more",
+        ),
+        ("  <html>\n  conflict\n</html> ", "HTTP 409 Conflict: <html> conflict </html>"),
+        ("x" * 300, "HTTP 409 Conflict: " + "x" * 197 + "..."),
+        ([1, 2], "HTTP 409 Conflict"),
+    ],
+)
+def test_describe_failure(body, expected):
+    assert api.describe_failure(failed_response(409, "Conflict"), body) == expected
+
+
+def test_describe_failure_without_a_reason_phrase():
+    assert api.describe_failure(failed_response(599, ""), {"title": "Odd"}) == "HTTP 599: Odd"
