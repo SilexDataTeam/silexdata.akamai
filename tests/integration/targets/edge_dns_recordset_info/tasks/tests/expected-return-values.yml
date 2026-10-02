@@ -1,0 +1,64 @@
+---
+# Live tests against the disposable test zone, which they create first and
+# delete afterwards. They run only when setup_akamai_changes_enabled is true.
+
+- name: Expected-return-values | Record set lookups
+  when: edge_dns_recordset_info_changes_enabled | bool
+  block:
+    - name: Expected-return-values | Create the test zone
+      silexdata.akamai.edge_dns_zone:
+        zone: "{{ edge_dns_recordset_info_test_zone }}"
+        contract_id: "{{ edge_dns_recordset_info_contract_id }}"
+        group_id: "{{ edge_dns_recordset_info_group_id }}"
+        edge_auth: "{{ edge_dns_recordset_info_edge_auth }}"
+        max_retries: 3
+
+    - name: Expected-return-values | Add a record set
+      silexdata.akamai.edge_dns_recordset:
+        zone: "{{ edge_dns_recordset_info_test_zone }}"
+        name: "www.{{ edge_dns_recordset_info_test_zone }}"
+        type: A
+        ttl: 300
+        rdata: [192.0.2.10]
+        edge_auth: "{{ edge_dns_recordset_info_edge_auth }}"
+        max_retries: 3
+
+    - name: Expected-return-values | Get it by name and type
+      silexdata.akamai.edge_dns_recordset_info:
+        zone: "{{ edge_dns_recordset_info_test_zone }}"
+        name: "www.{{ edge_dns_recordset_info_test_zone }}"
+        type: A
+        edge_auth: "{{ edge_dns_recordset_info_edge_auth }}"
+      register: edge_dns_recordset_info_one
+
+    - name: Expected-return-values | List every record set
+      silexdata.akamai.edge_dns_recordset_info:
+        zone: "{{ edge_dns_recordset_info_test_zone }}"
+        edge_auth: "{{ edge_dns_recordset_info_edge_auth }}"
+      register: edge_dns_recordset_info_all
+
+    - name: Expected-return-values | Look up a record set that does not exist
+      silexdata.akamai.edge_dns_recordset_info:
+        zone: "{{ edge_dns_recordset_info_test_zone }}"
+        name: "nothing.{{ edge_dns_recordset_info_test_zone }}"
+        type: A
+        edge_auth: "{{ edge_dns_recordset_info_edge_auth }}"
+      register: edge_dns_recordset_info_missing
+
+    - name: Expected-return-values | Assert the lookups
+      ansible.builtin.assert:
+        that:
+          - edge_dns_recordset_info_one.recordsets | length == 1
+          - edge_dns_recordset_info_one.recordsets[0].rdata == ['192.0.2.10']
+          - edge_dns_recordset_info_all.recordsets | map(attribute='type') | select('in', ['A', 'NS', 'SOA']) | unique | sort | list == ['A', 'NS', 'SOA']
+          - edge_dns_recordset_info_missing.recordsets == []
+        fail_msg: "Unexpected lookups: {{ [edge_dns_recordset_info_one, edge_dns_recordset_info_all, edge_dns_recordset_info_missing] }}"
+        success_msg: "Record set lookups returned the expected results."
+  always:
+    - name: Expected-return-values | Delete the test zone
+      silexdata.akamai.edge_dns_zone:
+        zone: "{{ edge_dns_recordset_info_test_zone }}"
+        state: absent
+        bypass_safety_checks: true
+        edge_auth: "{{ edge_dns_recordset_info_edge_auth }}"
+        max_retries: 3

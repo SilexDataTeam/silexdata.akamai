@@ -1,0 +1,10 @@
+---
+# This file performs no tests itself. It discovers and runs every test file
+# under tasks/tests/, each of which groups a category of tests.
+
+- name: Run all edge_dns_zone_info test categories
+  ansible.builtin.include_tasks: "{{ edge_dns_zone_info_test_file }}"
+  loop: "{{ query('ansible.builtin.fileglob', role_path ~ '/tasks/tests/*.yml') | sort }}"
+  loop_control:
+    loop_var: edge_dns_zone_info_test_file
+    label: "{{ edge_dns_zone_info_test_file | basename }}"

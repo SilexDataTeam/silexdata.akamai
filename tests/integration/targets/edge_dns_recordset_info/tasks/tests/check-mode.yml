@@ -1,0 +1,20 @@
+---
+# Without a live service the module still has to run in check mode: it reads
+# the current state first, so it fails to connect rather than being skipped.
+- name: Check-mode | Run in check mode
+  silexdata.akamai.edge_dns_recordset_info:
+    zone: example.org
+    edge_auth: "{{ edge_dns_recordset_info_edge_auth }}"
+  check_mode: true
+  register: edge_dns_recordset_info_check_mode_support
+  ignore_errors: true
+
+- name: Check-mode | Assert the module supports check mode
+  ansible.builtin.assert:
+    that:
+      - edge_dns_recordset_info_check_mode_support is not skipped
+      - "(edge_dns_recordset_info_service_available | bool) or (edge_dns_recordset_info_check_mode_support.msg is search('^GET https://.* failed: '))"
+    fail_msg: >-
+      The module did not run in check mode as expected. It must declare
+      supports_check_mode=True: {{ edge_dns_recordset_info_check_mode_support }}
+    success_msg: "The module supports check mode."

@@ -1,0 +1,28 @@
+---
+# Live, read-only tests. They run whenever setup_akamai finds the service.
+
+- name: Expected-return-values | Live zone listing
+  when: edge_dns_zone_info_service_available | bool
+  block:
+    - name: Expected-return-values | List every zone
+      silexdata.akamai.edge_dns_zone_info:
+        edge_auth: "{{ edge_dns_zone_info_edge_auth }}"
+        max_retries: 3
+      register: edge_dns_zone_info_all
+
+    - name: Expected-return-values | Look up a zone that cannot exist
+      silexdata.akamai.edge_dns_zone_info:
+        zone: no-such-zone.invalid
+        edge_auth: "{{ edge_dns_zone_info_edge_auth }}"
+        max_retries: 3
+      register: edge_dns_zone_info_missing
+
+    - name: Expected-return-values | Assert the response shape
+      ansible.builtin.assert:
+        that:
+          - edge_dns_zone_info_all is not changed
+          - edge_dns_zone_info_all.zones is sequence
+          - edge_dns_zone_info_missing is not changed
+          - edge_dns_zone_info_missing.zones == []
+        fail_msg: "Unexpected zone listing: {{ [edge_dns_zone_info_all, edge_dns_zone_info_missing] }}"
+        success_msg: "Zone listing returned the expected shape."

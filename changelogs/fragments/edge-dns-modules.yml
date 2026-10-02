@@ -1,4 +1,14 @@
 ---
+release_summary: >-
+  This release adds idempotent modules for Akamai Edge DNS zones and record sets, so playbooks no longer need to
+  build Edge DNS requests with ``manage_akamai``.
+minor_changes:
+  - >-
+    Add the ``edge_dns_zone``, ``edge_dns_recordset``, ``edge_dns_zone_info`` and ``edge_dns_recordset_info`` modules.
+    ``edge_dns_zone`` creates a primary zone with Edge DNS's default SOA and NS records, and waits for zone deletion
+    to finish. ``edge_dns_recordset`` compares records in any order and in Edge DNS's normalized form. All four support
+    check mode, the two that change state support diff mode, and they share ``manage_akamai``'s authentication and
+    retry options (https://github.com/SilexDataTeam/silexdata.akamai/issues/10).
 trivial:
   - >-
     Integration tests - add ``setup_akamai_allow_changes``, ``setup_akamai_test_zone``, ``setup_akamai_contract_id`` and
