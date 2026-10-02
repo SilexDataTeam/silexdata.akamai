@@ -19,3 +19,7 @@ minor_changes:
   - >-
     manage_akamai - return the response body in ``response_body`` on success and on failure. ``msg`` still holds it on
     success.
+removed_features:
+  - >-
+    The deprecated ``silexdata.akamai.akamai`` module name, renamed to ``silexdata.akamai.manage_akamai`` in 1.1.0, is
+    removed. Tasks that still use it fail with a message naming the new module.
